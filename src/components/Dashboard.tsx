@@ -13,6 +13,7 @@ import ProfileView from "./ProfileView";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import ChatWithDestiny from "./ChatWithDestiny";
+import React from "react";
 
 interface Notification {
   uid: string;
@@ -225,7 +226,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   const formatNotificationDate = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
-      return formatDistanceToNow(date, { addSuffix: true });
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     } catch (error) {
       return dateStr;
     }
@@ -239,7 +246,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   console.log('Dashboard render - Current messages:', messages);
   console.log('Dashboard render - Total notification count:', totalNotificationCount);
 
-  const UserCard = ({ user }: { user: User }) => {
+  const UserCard = React.forwardRef<HTMLDivElement, { user: User }>(({ user }, ref) => {
     const [isLoading, setIsLoading] = useState(false);
 
     const handleAction = async (actionType: 'skip' | 'align') => {
@@ -330,6 +337,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
 
     return (
       <motion.div
+        ref={ref}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
@@ -417,7 +425,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
         </Card>
       </motion.div>
     );
-  };
+  });
+
+  UserCard.displayName = "UserCard";
 
   const EmptyState = ({ icon: Icon, title, description }: { 
     icon: any; 
@@ -694,10 +704,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <CardContent className="p-6">
                 {recommendations.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence>
+                    <AnimatePresence mode="popLayout">
                       {recommendations.map((user) => (
                         <UserCard 
-                          key={`recommendation-${user.uid}-${Math.random()}`} 
+                          key={`recommendation-${user.uid}`} 
                           user={user} 
                         />
                       ))}
@@ -735,7 +745,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <CardContent className="p-6">
                 {awaiting.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence>
+                    <AnimatePresence mode="popLayout">
                       {awaiting.map((user) => (
                         <UserCard key={`awaiting-${user.uid}`} user={user} />
                       ))}
@@ -773,7 +783,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <CardContent className="p-6">
                 {matches.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence>
+                    <AnimatePresence mode="popLayout">
                       {matches.map((user) => (
                         <UserCard key={`match-${user.uid}`} user={user} />
                       ))}

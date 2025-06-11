@@ -186,16 +186,20 @@ const ChatWithDestiny = ({ userUID, onClose }: ChatWithDestinyProps) => {
   const handleChatClose = async () => {
     console.log('ChatWithDestiny - Chat closed by user');
     try {
-      await fetch('/chat', {
+      const formData = new FormData();
+      const metadata = {
+        uid: userUID,
+        user_input: "exit",
+        history: messages.map(msg => ({
+          content: msg.text,
+          role: msg.isUser ? "user" : "assistant"
+        }))
+      };
+      formData.append('metadata', JSON.stringify(metadata));
+
+      await fetch(`${config.URL}/chat:continue`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uid: userUID,
-          history: messages,
-          user_input: "end",
-        }),
+        body: formData
       });
     } catch (error) {
       console.error('Error ending chat:', error);
