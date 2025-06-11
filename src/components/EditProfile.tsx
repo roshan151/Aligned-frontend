@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, Save, X, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +20,19 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
   const [profileData, setProfileData] = useState<any>(null);
   const [newImages, setNewImages] = useState<File[]>([]);
   const [existingImages, setExistingImages] = useState<any[]>([]);
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    city: '',
+    country: '',
+    profession: '',
+    birth_city: '',
+    birth_country: '',
+    dob: '',
+    tob: '',
+    gender: '',
+    hobbies: ''
+  });
   const { toast } = useToast();
 
   useEffect(() => {
@@ -30,63 +45,63 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
         // Set existing images
         const images = parsedData.IMAGES || parsedData.images || [];
         setExistingImages(images);
+
+        // Set form data
+        setFormData({
+          name: parsedData.NAME || parsedData.name || '',
+          phone: parsedData.PHONE || parsedData.phone || '',
+          city: parsedData.CITY || parsedData.city || '',
+          country: parsedData.COUNTRY || parsedData.country || '',
+          profession: parsedData.PROFESSION || parsedData.profession || '',
+          birth_city: parsedData.BIRTH_CITY || parsedData.birth_city || '',
+          birth_country: parsedData.BIRTH_COUNTRY || parsedData.birth_country || '',
+          dob: parsedData.DOB || parsedData.dob || '',
+          tob: parsedData.TOB || parsedData.tob || '',
+          gender: parsedData.GENDER || parsedData.gender || '',
+          hobbies: Array.isArray(parsedData.HOBBIES || parsedData.hobbies) 
+            ? (parsedData.HOBBIES || parsedData.hobbies).join(', ')
+            : parsedData.HOBBIES || parsedData.hobbies || ''
+        });
       } catch (error) {
         console.error('Error parsing user data:', error);
       }
     }
   }, []);
 
-  const convertFilesToBase64 = async (files: File[]): Promise<string[]> => {
-    const base64Images: string[] = [];
-    
-    for (const file of files) {
-      try {
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            // Remove the data:image/jpeg;base64, prefix to get just the base64 string
-            const base64String = result.split(',')[1];
-            resolve(base64String);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-        base64Images.push(base64);
-      } catch (error) {
-        console.error('Error converting file to base64:', error);
-        toast({
-          title: "Error",
-          description: "Failed to process image files",
-          variant: "destructive",
-        });
-      }
-    }
-    
-    return base64Images;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const updateProfileAPI = async (imageData: string[]) => {
+  const updateProfileAPI = async () => {
     try {
       const userUID = localStorage.getItem('userUID');
       if (!userUID) {
         throw new Error('User UID not found');
       }
 
-      // Only send the new images to API
-      const apiData = {
-        UID: userUID,
-        IMAGES: imageData.length > 0 ? imageData.map(img => ({ data: img })) : []
+      // Create FormData object
+      const formDataObj = new FormData();
+      
+      // Add metadata as JSON string
+      const metadata = {
+        uid: userUID,
+        ...formData,
+        hobbies: formData.hobbies.split(',').map(h => h.trim()).filter(h => h)
       };
+      formDataObj.append('metadata', JSON.stringify(metadata));
 
-      console.log('Sending new photos to API:', apiData);
+      // Add images
+      newImages.forEach((image, index) => {
+        formDataObj.append('images', image);
+      });
 
-      const response = await fetch(`${config.URL}/update:profile`, {
+      const response = await fetch(`${config.URL}/account:update`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(apiData),
+        body: formDataObj
       });
 
       if (!response.ok) {
@@ -94,57 +109,42 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
       }
 
       const result = await response.json();
-      console.log('Photos update response:', result);
+      console.log('Profile update response:', result);
       
       return result;
     } catch (error) {
-      console.error('Error updating photos via API:', error);
+      console.error('Error updating profile via API:', error);
       throw error;
     }
   };
 
   const handleSave = async () => {
-    if (newImages.length === 0) {
-      toast({
-        title: "No Changes",
-        description: "No new photos to upload.",
-        variant: "default",
-      });
-      onCancel();
-      return;
-    }
-
     setIsLoading(true);
     try {
-      // Convert only new images to base64
-      const newImageData = await convertFilesToBase64(newImages);
+      await updateProfileAPI();
       
-      // Update profile via API with only new images
-      await updateProfileAPI(newImageData);
-      
-      // Update localStorage - append new images to existing ones
+      // Update localStorage
       const currentUserData = JSON.parse(localStorage.getItem('userData') || '{}');
-      const allImages = [...existingImages, ...newImageData.map(img => ({ data: img }))];
       const updatedProfile = {
         ...currentUserData,
-        IMAGES: allImages,
-        images: allImages
+        ...formData,
+        IMAGES: existingImages,
+        images: existingImages
       };
       
       localStorage.setItem('userData', JSON.stringify(updatedProfile));
       
       toast({
         title: "Success",
-        description: "Photos uploaded successfully!",
+        description: "Profile updated successfully!",
       });
       
-      console.log('Photos updated successfully');
       onSave();
     } catch (error) {
-      console.error('Error updating photos:', error);
+      console.error('Error updating profile:', error);
       toast({
         title: "Error",
-        description: "Failed to upload photos. Please try again.",
+        description: "Failed to update profile. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -154,7 +154,6 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
 
   const handleNewImagesChange = (images: File[]) => {
     setNewImages(images);
-    console.log('New images selected:', images.length);
   };
 
   if (!profileData) {
@@ -173,8 +172,8 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
       <Card className="bg-white/10 backdrop-blur-md border-white/20 shadow-2xl">
         <CardHeader>
           <CardTitle className="flex items-center text-white">
-            <Camera className="w-5 h-5 mr-2 text-violet-300" />
-            Upload Photos
+            <User className="w-5 h-5 mr-2 text-violet-300" />
+            Edit Profile
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -189,25 +188,123 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
               </Avatar>
             </div>
 
-            {/* Display existing images */}
-            {existingImages.length > 0 && (
+            {/* Form Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label className="text-white">Current Photos ({existingImages.length})</Label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {existingImages.map((image, index) => (
-                    <div key={index} className="aspect-square relative">
-                      <img
-                        src={`data:image/jpeg;base64,${image.data}`}
-                        alt={`Current ${index + 1}`}
-                        className="w-full h-full object-cover rounded border-2 border-white/20"
-                      />
-                    </div>
-                  ))}
-                </div>
+                <Label className="text-white">Name</Label>
+                <Input
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
               </div>
-            )}
 
-            {/* New Image Upload Section */}
+              <div className="space-y-2">
+                <Label className="text-white">Phone</Label>
+                <Input
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">City</Label>
+                <Input
+                  name="city"
+                  value={formData.city}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Country</Label>
+                <Input
+                  name="country"
+                  value={formData.country}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Profession</Label>
+                <Input
+                  name="profession"
+                  value={formData.profession}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Gender</Label>
+                <Input
+                  name="gender"
+                  value={formData.gender}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Birth City</Label>
+                <Input
+                  name="birth_city"
+                  value={formData.birth_city}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Birth Country</Label>
+                <Input
+                  name="birth_country"
+                  value={formData.birth_country}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Date of Birth</Label>
+                <Input
+                  type="date"
+                  name="dob"
+                  value={formData.dob}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-white">Time of Birth</Label>
+                <Input
+                  type="time"
+                  name="tob"
+                  value={formData.tob}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                />
+              </div>
+
+              <div className="md:col-span-2 space-y-2">
+                <Label className="text-white">Hobbies (comma-separated)</Label>
+                <Textarea
+                  name="hobbies"
+                  value={formData.hobbies}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/20 text-white"
+                  placeholder="Enter hobbies separated by commas"
+                />
+              </div>
+            </div>
+
+            {/* Image Upload Section */}
             <div className="space-y-2">
               <Label className="text-white">Add New Photos</Label>
               <ImageUpload images={newImages} onImagesChange={handleNewImagesChange} />
@@ -227,11 +324,11 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
               <Button
                 type="button"
                 onClick={handleSave}
-                disabled={isLoading || newImages.length === 0}
+                disabled={isLoading}
                 className="bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white"
               >
                 <Save className="w-4 h-4 mr-2" />
-                {isLoading ? 'Uploading...' : 'Upload Photos'}
+                {isLoading ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
           </div>
