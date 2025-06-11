@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -8,14 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Users, User, Star } from "lucide-react";
 
 interface User {
-  UID: string;
+  uid: string;
   name: string;
   email?: string;
   city?: string;
   country?: string;
   age?: number;
   gender?: string;
-  hobbies?: string;
+  hobbies?: string | string[];
   profilePicture?: string;
   bio?: string;
   images?: string[];
@@ -160,7 +159,7 @@ const Recommendations = ({ cachedData }: RecommendationsProps) => {
             {recommendations.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {recommendations.map((user) => (
-                  <UserCard key={user.UID} user={user} />
+                  <UserCard key={user.uid} user={user} />
                 ))}
               </div>
             ) : (

@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Heart, Bell, Clock, Users, User, LogOut, Star } from "lucide-react";
+import { Heart, Bell, Clock, Users, User, LogOut, Star, X } from "lucide-react";
 import { config } from "../config/api";
 import UserActions from "./UserActions";
 import ProfileView from "./ProfileView";
@@ -14,8 +14,16 @@ import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import ChatWithDestiny from "./ChatWithDestiny";
 
+interface Notification {
+  uid: string;
+  name: string;
+  message: string;
+  timestamp: string;
+  updated: string;
+}
+
 interface User {
-  UID: string;
+  uid: string;
   name: string;
   email?: string;
   city?: string;
@@ -27,6 +35,7 @@ interface User {
   bio?: string;
   images?: string[];
   kundliScore?: number;
+  user_align?: boolean;
 }
 
 interface DashboardMessage {
@@ -36,16 +45,16 @@ interface DashboardMessage {
   userName?: string;
 }
 
-interface Notification {
-  message: string;
-  updated: string;
-}
-
 interface DashboardProps {
   userUID: string | null;
   setIsLoggedIn: (value: boolean) => void;
-  onLogout?: () => void;
-  cachedData?: any;
+  onLogout: () => void;
+  cachedData?: {
+    recommendations?: User[];
+    matches?: User[];
+    awaiting?: User[];
+    notifications?: Notification[];
+  };
   isLoadingData?: boolean;
   notifications?: Notification[];
 }
@@ -174,32 +183,30 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   };
 
   const handleActionComplete = (action: 'skip' | 'align', queue?: string, message?: string) => {
-    if (!selectedUser) return;
-
     // Remove user from current list first
-    const userUID = selectedUser.UID;
-    setRecommendations(prev => prev.filter(user => user.UID !== userUID));
-    setMatches(prev => prev.filter(user => user.UID !== userUID));
-    setNotificationUsers(prev => prev.filter(user => user.UID !== userUID));
-    setAwaiting(prev => prev.filter(user => user.UID !== userUID));
+    const userUID = selectedUser.uid;
+    setRecommendations(prev => prev.filter(user => user.uid !== userUID));
+    setMatches(prev => prev.filter(user => user.uid !== userUID));
+    setNotificationUsers(prev => prev.filter(user => user.uid !== userUID));
+    setAwaiting(prev => prev.filter(user => user.uid !== userUID));
 
     // Add message to notifications if present
     if (message && message !== 'None') {
       addMessage(message, selectedUser.name);
     }
 
-    // Handle queue management based on API response
+    // Handle queue management
     if (queue && queue !== 'None') {
       switch (queue) {
         case 'MATCHED':
         case 'Matched':
-          // Move to matches (Aligned queue - the heart button on top left)
+          // Move to matches queue
           setMatches(prev => [...prev, selectedUser]);
           console.log(`Moving user ${selectedUser.name} to matches queue`);
           break;
         case 'AWAITING':
         case 'Awaiting':
-          // Move to awaiting (Pending tab)
+          // Move to awaiting queue
           setAwaiting(prev => [...prev, selectedUser]);
           console.log(`Moving user ${selectedUser.name} to awaiting queue`);
           break;
@@ -208,7 +215,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
           break;
       }
     } else {
-      console.log(`Queue is None or undefined, removing user ${selectedUser.name} from all queues`);
+      console.log(`Queue is None, removing user from all queues`);
     }
 
     // Close the profile view
@@ -232,57 +239,185 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   console.log('Dashboard render - Current messages:', messages);
   console.log('Dashboard render - Total notification count:', totalNotificationCount);
 
-  const UserCard = ({ user }: { user: User }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.3 }}
-    >
-      <Card className="group relative overflow-hidden bg-white/5 backdrop-blur-xl border border-white/10 hover:border-white/20 transition-all duration-500 hover:scale-[1.02] shadow-xl hover:shadow-2xl cursor-pointer">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-        <CardContent className="p-6 relative z-10" onClick={() => handleUserClick(user)}>
-          <div className="flex items-start space-x-4">
-            <div className="relative">
-              <Avatar className="w-24 h-24 ring-2 ring-white/20 group-hover:ring-white/40 transition-all duration-300">
-                <AvatarImage 
-                  src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} 
-                  className="object-cover w-full h-full"
-                />
-                <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-500 text-white font-semibold text-xl">
-                  {user.name?.charAt(0) || <User className="w-10 h-10" />}
+  const UserCard = ({ user }: { user: User }) => {
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleAction = async (actionType: 'skip' | 'align') => {
+      if (!userUID) return;
+      
+      setIsLoading(true);
+      try {
+        const formData = new FormData();
+        const metadata = {
+          uid: userUID,                    // current user's UID
+          action: actionType,              // 'align' or 'skip'
+          recommendation_uid: user.uid     // the uid of the card being acted upon
+        };
+
+        formData.delete('metadata');
+        formData.append('metadata', JSON.stringify(metadata));
+
+        const response = await fetch(`${config.URL}/account:action`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.error === 'OK') {
+            // Handle queue management based on response
+            const queue = data.queue;
+            const message = data.message;
+            const userAlign = data.user_align;
+
+            // Add notification if message exists
+            if (message && message !== 'None') {
+              addMessage(message, user.name);
+            }
+
+            // First remove user from recommendations
+            setRecommendations(prev => prev.filter(u => u.uid !== user.uid));
+
+            // Then handle queue management
+            if (queue && queue !== 'None') {
+              // Create updated user object with user_align
+              const updatedUser = {
+                ...user,
+                user_align: userAlign
+              };
+
+              switch (queue) {
+                case 'MATCHED':
+                case 'Matched':
+                  // Move to matches queue
+                  setMatches(prev => [...prev, updatedUser]);
+                  console.log(`Moving user ${user.name} to matches queue`);
+                  break;
+                case 'AWAITING':
+                case 'Awaiting':
+                  // Move to awaiting queue
+                  setAwaiting(prev => [...prev, updatedUser]);
+                  console.log(`Moving user ${user.name} to awaiting queue`);
+                  break;
+                default:
+                  console.log(`Unknown queue type: ${queue}, removing user from all queues`);
+                  // Remove from other queues if not moving to a specific queue
+                  setMatches(prev => prev.filter(u => u.uid !== user.uid));
+                  setNotificationUsers(prev => prev.filter(u => u.uid !== user.uid));
+                  setAwaiting(prev => prev.filter(u => u.uid !== user.uid));
+                  break;
+              }
+            } else {
+              console.log(`Queue is None, removing user from all queues`);
+              // Remove from all queues if no specific queue is specified
+              setMatches(prev => prev.filter(u => u.uid !== user.uid));
+              setNotificationUsers(prev => prev.filter(u => u.uid !== user.uid));
+              setAwaiting(prev => prev.filter(u => u.uid !== user.uid));
+            }
+          } else {
+            console.error('API error:', data.error);
+          }
+        } else {
+          throw new Error('Network response was not ok');
+        }
+      } catch (error) {
+        console.error('Action error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        className="relative"
+      >
+        <Card className="overflow-hidden bg-white/5 backdrop-blur-xl border border-white/10 hover:border-white/20 transition-colors">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4 mb-4">
+              <Avatar className="w-16 h-16 ring-2 ring-white/20">
+                <AvatarImage src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} />
+                <AvatarFallback className="bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xl font-bold">
+                  {user.name?.charAt(0) || <User className="w-8 h-8" />}
                 </AvatarFallback>
               </Avatar>
-              <div className="absolute -inset-1 bg-gradient-to-br from-violet-400 to-purple-400 rounded-full blur opacity-0 group-hover:opacity-30 transition-opacity duration-300"></div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">{user.name}</h3>
+                {user.age && (
+                  <p className="text-white/70">{user.age} years old</p>
+                )}
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-lg text-white/90 truncate group-hover:text-white transition-colors mb-1">
-                {user.name || 'Unknown User'}
-              </h3>
-              {user.city && user.country && (
-                <p className="text-sm text-white/60 truncate mb-1">
-                  📍 {user.city}, {user.country}
-                </p>
-              )}
-              {user.age && (
-                <p className="text-sm text-white/60 mb-1">
-                  🎂 {user.age} years old
-                </p>
-              )}
-              {user.kundliScore !== undefined && user.kundliScore !== null && (
-                <div className="flex items-center mb-2">
-                  <Star className="w-4 h-4 text-yellow-400 mr-1" />
-                  <span className="text-sm text-yellow-200 font-medium">
-                    Compatibility: {user.kundliScore}/36
-                  </span>
-                </div>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {user.hobbies && (
+                typeof user.hobbies === 'string' ? (
+                  user.hobbies.split(',').map((hobby, index) => (
+                    <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
+                      {hobby.trim()}
+                    </Badge>
+                  ))
+                ) : (
+                  user.hobbies.map((hobby, index) => (
+                    <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
+                      {hobby}
+                    </Badge>
+                  ))
+                )
               )}
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
+
+            <div className="flex justify-center items-center gap-6 mt-6">
+              {/* Align Button or Waiting Clock */}
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                {user.user_align ? (
+                  // Show waiting clock icon if user_align is true
+                  <div className="relative w-16 h-16 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 flex items-center justify-center">
+                    <Clock className="w-6 h-6 text-emerald-300" />
+                  </div>
+                ) : (
+                  // Show align button if user_align is false
+                  <Button
+                    onClick={() => handleAction('align')}
+                    variant="outline"
+                    size="lg"
+                    disabled={isLoading}
+                    className="relative w-16 h-16 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                  >
+                    <Heart className="w-6 h-6 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
+                  </Button>
+                )}
+                <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-sm text-white/60 font-medium">
+                  {user.user_align ? 'Waiting' : 'Align'}
+                </span>
+              </div>
+
+              {/* Skip Button */}
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                <Button
+                  onClick={() => handleAction('skip')}
+                  variant="outline"
+                  size="lg"
+                  disabled={isLoading}
+                  className="relative w-16 h-16 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                >
+                  <X className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
+                </Button>
+                <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-sm text-white/60 font-medium">
+                  Skip
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  };
 
   const EmptyState = ({ icon: Icon, title, description }: { 
     icon: any; 
@@ -307,7 +442,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
         <div className="max-w-4xl mx-auto px-6 py-8">
           <ProfileView user={selectedUser} onBack={handleBackToList}>
             <UserActions 
-              userUID={selectedUser.UID} 
+              userUID={selectedUser.uid} 
               currentUserUID={userUID}
               onActionComplete={handleActionComplete}
             />
@@ -373,7 +508,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                     <div className="space-y-3">
                       {matches.map((user) => (
                         <div 
-                          key={`match-${user.UID}`}
+                          key={`match-${user.uid}`}
                           className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors"
                           onClick={() => {
                             handleUserClick(user);
@@ -419,7 +554,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               if (open) setHasNewNotifications(false);
             }}>
               <PopoverTrigger asChild>
-                <Button 
+                <Button
                   variant="outline"
                   size="sm"
                   className="relative border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
@@ -561,7 +696,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence>
                       {recommendations.map((user) => (
-                        <UserCard key={`recommendation-${user.UID || Math.random()}`} user={user} />
+                        <UserCard 
+                          key={`recommendation-${user.uid}-${Math.random()}`} 
+                          user={user} 
+                        />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -599,7 +737,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence>
                       {awaiting.map((user) => (
-                        <UserCard key={`awaiting-${user.UID}`} user={user} />
+                        <UserCard key={`awaiting-${user.uid}`} user={user} />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -637,7 +775,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence>
                       {matches.map((user) => (
-                        <UserCard key={`match-${user.UID}`} user={user} />
+                        <UserCard key={`match-${user.uid}`} user={user} />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -655,7 +793,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
       </div>
 
       {showChat && userUID && (
-        <ChatWithDestiny
+        <ChatWithDestiny 
           userUID={userUID}
           onClose={() => {
             console.log('Dashboard - Chat closed by user');

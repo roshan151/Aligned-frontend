@@ -1,4 +1,3 @@
-
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +6,7 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { User, MapPin, Calendar, ArrowLeft, Camera, Star } from "lucide-react";
 
 interface User {
-  UID: string;
+  uid: string;
   name: string;
   email?: string;
   city?: string;
@@ -106,7 +105,7 @@ const ProfileView = ({ user, onBack, children }: ProfileViewProps) => {
               <h3 className="text-lg font-semibold text-white mb-4">Interests</h3>
               <div className="flex flex-wrap gap-2">
                 {hobbiesArray.map((hobby, index) => (
-                  <Badge key={`hobby-${user.UID}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20 px-3 py-1">
+                  <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20 px-3 py-1">
                     {hobby}
                   </Badge>
                 ))}
@@ -124,7 +123,7 @@ const ProfileView = ({ user, onBack, children }: ProfileViewProps) => {
                 <Carousel className="w-full max-w-md mx-auto">
                   <CarouselContent>
                     {user.images.map((image, index) => (
-                      <CarouselItem key={`image-${user.UID}-${index}`}>
+                      <CarouselItem key={`image-${user.uid}-${index}`}>
                         <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-white/5 backdrop-blur-xl border border-white/10">
                           <img
                             src={image}
