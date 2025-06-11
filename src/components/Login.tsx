@@ -86,6 +86,10 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
       if (response.ok && data.LOGIN === "SUCCESSFUL") {
         console.log('Login successful for UID:', data.UID);
         
+        // Clear Destiny chat session storage flags
+        sessionStorage.removeItem('destinyChatDismissed');
+        sessionStorage.removeItem('destinyChatCompleted');
+        
         // Store the complete login response data including profile and recommendation cards
         const loginData = {
           uid: data.UID,
@@ -107,11 +111,6 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
         
         // Use the new onSuccessfulLogin handler with the complete data
         await onSuccessfulLogin(data.UID, loginData);
-        
-        toast({
-          title: "Login Successful",
-          description: "Welcome back!",
-        });
         
       } else {
         console.error('Login failed:', data);

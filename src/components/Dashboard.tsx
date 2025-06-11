@@ -12,6 +12,7 @@ import UserActions from "./UserActions";
 import ProfileView from "./ProfileView";
 import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
+import ChatWithDestiny from "./ChatWithDestiny";
 
 interface User {
   UID: string;
@@ -62,6 +63,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
+  const [showChat, setShowChat] = useState(true);
 
   useEffect(() => {
     // Set system notifications from props if provided
@@ -104,6 +106,31 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     
     setIsLoading(false);
   }, [cachedData]);
+
+  useEffect(() => {
+    // Initialize chat state
+    console.log('Dashboard - Initializing chat state');
+    // Only check session storage if we have a userUID
+    if (userUID) {
+      const chatDismissed = sessionStorage.getItem('destinyChatDismissed');
+      const chatCompleted = sessionStorage.getItem('destinyChatCompleted');
+      
+      console.log('Dashboard - Chat state from session:', {
+        chatDismissed,
+        chatCompleted,
+        userUID
+      });
+      
+      // Only disable chat if explicitly dismissed or completed
+      if (chatDismissed === 'true' || chatCompleted === 'true') {
+        console.log('Dashboard - Chat disabled by session state');
+        setShowChat(false);
+      } else {
+        console.log('Dashboard - Enabling chat');
+        setShowChat(true);
+      }
+    }
+  }, [userUID]);
 
   const addMessage = (text: string, userName?: string) => {
     const newMessage: DashboardMessage = {
@@ -306,6 +333,14 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     );
   }
 
+  // Add debug logging for render
+  console.log('Dashboard - Rendering with state:', {
+    showChat,
+    userUID,
+    isLoadingData,
+    hasCachedData: !!cachedData
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       {/* Modern Header - Mobile Optimized */}
@@ -375,7 +410,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               </PopoverContent>
             </Popover>
             <div className="hidden sm:block">
-              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight amazon-font">Aligned</h1>
+              <h1 className="text-4xl sm:text-6xl font-bold text-white tracking-tight font-['Lavanderia']">Aligned</h1>
             </div>
           </div>
           <div className="flex gap-2 sm:gap-3">
@@ -526,15 +561,15 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence>
                       {recommendations.map((user) => (
-                        <UserCard key={`recommendation-${user.UID}`} user={user} />
+                        <UserCard key={`recommendation-${user.UID || Math.random()}`} user={user} />
                       ))}
                     </AnimatePresence>
                   </div>
                 ) : (
                   <EmptyState
                     icon={Users}
-                    title="No new discoveries"
-                    description="We're finding amazing people for you to connect with!"
+                    title="No recommendations yet"
+                    description="We're working on finding your perfect matches. Check back soon!"
                   />
                 )}
               </CardContent>
@@ -618,6 +653,16 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
           </TabsContent>
         </Tabs>
       </div>
+
+      {showChat && userUID && (
+        <ChatWithDestiny
+          userUID={userUID}
+          onClose={() => {
+            console.log('Dashboard - Chat closed by user');
+            setShowChat(false);
+          }}
+        />
+      )}
     </div>
   );
 };
