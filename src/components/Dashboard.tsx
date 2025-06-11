@@ -464,9 +464,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
             >
               <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">Recommendations</span>
+              <span className="hidden sm:inline">Discover</span>
               <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {recommendations.length}
+                {isLoadingData ? (
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  recommendations.length
+                )}
               </Badge>
             </TabsTrigger>
             <TabsTrigger 
@@ -476,7 +480,11 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <Clock className="w-4 h-4" />
               <span className="hidden sm:inline">Awaiting</span>
               <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {awaiting.length}
+                {isLoadingData ? (
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  awaiting.length
+                )}
               </Badge>
             </TabsTrigger>
             <TabsTrigger 
@@ -486,7 +494,11 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <Heart className="w-4 h-4" />
               <span className="hidden sm:inline">Matches</span>
               <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {matches.length}
+                {isLoadingData ? (
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  matches.length
+                )}
               </Badge>
             </TabsTrigger>
           </TabsList>
