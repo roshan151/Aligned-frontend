@@ -9,8 +9,6 @@ import Notifications from "./Notifications";
 import Awaiting from "./Awaiting";
 import ProfilePage from "./Profile";
 import { config } from "../config/api";
-import { Toaster } from "@/components/ui/toaster";
-import NotificationHandler from "@/components/NotificationHandler";
 
 interface ProfileData {
   uid: string;
@@ -54,17 +52,16 @@ const Index = () => {
 
   const fetchUserProfile = async (uid: string) => {
     try {
-      console.log(`Fetching user profile for UID: ${uid}`);
       const response = await fetch(`${config.URL}${config.ENDPOINTS.GET_PROFILE}/${uid}`, {
         method: 'GET',
       });
-
+      
       if (response.ok) {
-        const profileData = await response.json();
-        console.log('User profile fetched successfully:', profileData);
-        return profileData;
+        const data = await response.json();
+        console.log('Fetched user profile:', data);
+        return data;
       } else {
-        console.error(`Failed to fetch user profile, status: ${response.status}`);
+        console.error('Error fetching user profile:', response.status);
         return null;
       }
     } catch (error) {
@@ -73,58 +70,26 @@ const Index = () => {
     }
   };
 
-  const fetchDashboardData = async (uid: string) => {
-    try {
-      console.log(`Fetching dashboard data for UID: ${uid}`);
-      
-      // Fetch all dashboard data in parallel
-      const [recommendationsRes, matchesRes, awaitingRes, notificationsRes] = await Promise.all([
-        fetch(`${config.URL}${config.ENDPOINTS.GET_RECOMMENDATIONS}/${uid}`, { method: 'GET' }),
-        fetch(`${config.URL}${config.ENDPOINTS.GET_MATCHES}/${uid}`, { method: 'GET' }),
-        fetch(`${config.URL}${config.ENDPOINTS.GET_AWAITING}/${uid}`, { method: 'GET' }),
-        fetch(`${config.URL}${config.ENDPOINTS.GET_NOTIFICATIONS}/${uid}`, { method: 'GET' })
-      ]);
-
-      const dashboardData = {
-        recommendations: recommendationsRes.ok ? await recommendationsRes.json() : [],
-        matches: matchesRes.ok ? await matchesRes.json() : [],
-        awaiting: awaitingRes.ok ? await awaitingRes.json() : [],
-        notifications: notificationsRes.ok ? await notificationsRes.json() : []
-      };
-
-      console.log('Dashboard data fetched successfully:', dashboardData);
-      return dashboardData;
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      return {
-        recommendations: [],
-        matches: [],
-        awaiting: [],
-        notifications: []
-      };
-    }
-  };
-
-  const transformUserData = (apiData: any): ProfileData => {
-    console.log('Raw API data for transformation:', apiData);
+  const transformUserData = (data: any): ProfileData => {
+    console.log('Raw API data for transformation:', data);
     
     let hobbies: string[] = [];
-    if (apiData.HOBBIES || apiData.hobbies) {
+    if (data.HOBBIES || data.hobbies) {
       try {
-        const hobbiesData = apiData.HOBBIES || apiData.hobbies;
+        const hobbiesData = data.HOBBIES || data.hobbies;
         const hobbiesArray = typeof hobbiesData === 'string' ? JSON.parse(hobbiesData) : hobbiesData;
         hobbies = Array.isArray(hobbiesArray) ? hobbiesArray : hobbiesData.split(',').map((h: string) => h.trim());
       } catch {
-        hobbies = typeof (apiData.HOBBIES || apiData.hobbies) === 'string' 
-          ? (apiData.HOBBIES || apiData.hobbies).split(',').map((h: string) => h.trim()) 
+        hobbies = typeof (data.HOBBIES || data.hobbies) === 'string' 
+          ? (data.HOBBIES || data.hobbies).split(',').map((h: string) => h.trim()) 
           : [];
       }
     }
 
     let dob = '';
-    if (apiData.DOB || apiData.dob) {
+    if (data.DOB || data.dob) {
       try {
-        const dobData = apiData.DOB || apiData.dob;
+        const dobData = data.DOB || data.dob;
         if (typeof dobData === 'string' && dobData.includes('{')) {
           const dobObj = JSON.parse(dobData);
           dob = `${dobObj.year}-${String(dobObj.month).padStart(2, '0')}-${String(dobObj.day).padStart(2, '0')}`;
@@ -132,7 +97,7 @@ const Index = () => {
           dob = dobData;
         }
       } catch {
-        dob = apiData.DOB || apiData.dob || '';
+        dob = data.DOB || data.dob || '';
       }
     }
 
@@ -161,9 +126,9 @@ const Index = () => {
     const imageFields = ['IMAGES', 'images', 'profileImages', 'PROFILEIMAGES'];
     
     for (const field of imageFields) {
-      if (apiData[field]) {
+      if (data[field]) {
         try {
-          const imagesData = apiData[field];
+          const imagesData = data[field];
           
           if (typeof imagesData === 'string') {
             try {
@@ -204,20 +169,20 @@ const Index = () => {
     }
 
     return {
-      uid: apiData.UID || apiData.uid || '',
-      name: apiData.NAME || apiData.name || 'Unknown User',
-      email: apiData.EMAIL || apiData.email || '',
-      city: apiData.CITY || apiData.city || '',
-      country: apiData.COUNTRY || apiData.country || '',
-      birth_city: apiData.BIRTH_CITY || apiData.birth_city || '',
-      birth_country: apiData.BIRTH_COUNTRY || apiData.birth_country || '',
-      gender: apiData.GENDER || apiData.gender || '',
-      profession: apiData.PROFESSION || apiData.profession || '',
+      uid: data.UID || data.uid || '',
+      name: data.NAME || data.name || 'Unknown User',
+      email: data.EMAIL || data.email || '',
+      city: data.CITY || data.city || '',
+      country: data.COUNTRY || data.country || '',
+      birth_city: data.BIRTH_CITY || data.birth_city || '',
+      birth_country: data.BIRTH_COUNTRY || data.birth_country || '',
+      gender: data.GENDER || data.gender || '',
+      profession: data.PROFESSION || data.profession || '',
       dob: dob,
-      tob: apiData.TOB || apiData.tob || '',
+      tob: data.TOB || data.tob || '',
       hobbies: hobbies,
       images: images,
-      login: apiData.LOGIN || apiData.login || ''
+      login: data.LOGIN || data.login || ''
     };
   };
 
@@ -390,7 +355,13 @@ const Index = () => {
     // Store notifications from login response
     if (loginData.notifications && Array.isArray(loginData.notifications)) {
       console.log('Setting system notifications from login:', loginData.notifications);
-      setSystemNotifications(loginData.notifications);
+      // Remove duplicates based on message and updated timestamp
+      const uniqueNotifications = loginData.notifications.filter((notification, index, self) =>
+        index === self.findIndex((n) => 
+          n.message === notification.message && n.updated === notification.updated
+        )
+      );
+      setSystemNotifications(uniqueNotifications);
     }
 
     // Transform and store profile data from login response
@@ -464,11 +435,8 @@ const Index = () => {
         }
       }
 
-      // Fetch additional data in parallel
-      const [additionalProfileData, dashboardData] = await Promise.all([
-        fetchUserProfile(uid),
-        fetchDashboardData(uid)
-      ]);
+      // Fetch additional profile data if needed
+      const additionalProfileData = await fetchUserProfile(uid);
       
       // Merge additional profile data with login profile data if available
       if (additionalProfileData) {
@@ -479,20 +447,6 @@ const Index = () => {
         console.log('Merged profile data:', mergedProfileData);
         setProfileData(mergedProfileData);
         localStorage.setItem('profileData', JSON.stringify(mergedProfileData));
-      }
-      
-      // Merge the fetched dashboard data with the progressively loaded data
-      if (dashboardData) {
-        setDashboardData(prevData => {
-          if (!prevData) return dashboardData;
-          
-          return {
-            recommendations: [...prevData.recommendations, ...(dashboardData.recommendations || [])],
-            matches: [...prevData.matches, ...(dashboardData.matches || [])],
-            awaiting: [...prevData.awaiting, ...(dashboardData.awaiting || [])],
-            notifications: [...prevData.notifications, ...(dashboardData.notifications || [])]
-          };
-        });
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -566,9 +520,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Add NotificationHandler to manage notifications */}
-      <NotificationHandler notifications={systemNotifications} />
-      
       <Routes>
         <Route 
           path="/login" 
@@ -650,9 +601,6 @@ const Index = () => {
           element={<Navigate to={isLoggedIn ? "/dashboard" : "/login"} />} 
         />
       </Routes>
-      
-      {/* Add Toaster component for displaying notifications */}
-      <Toaster />
     </div>
   );
 };
