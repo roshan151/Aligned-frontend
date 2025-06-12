@@ -54,19 +54,129 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [showChat, setShowChat] = useState(true);
 
+  // Add effect to handle cached data from login
+  useEffect(() => {
+    if (cachedData) {
+      console.log('Using cached data from login:', cachedData);
+      
+      // Set recommendations if available
+      if (cachedData.recommendations && cachedData.recommendations.length > 0) {
+        console.log('Setting recommendations from cache:', cachedData.recommendations);
+        setRecommendations(cachedData.recommendations);
+      }
+
+      // Set awaiting if available
+      if (cachedData.awaiting && cachedData.awaiting.length > 0) {
+        console.log('Setting awaiting from cache:', cachedData.awaiting);
+        setAwaiting(cachedData.awaiting);
+      }
+
+      // Set matches if available
+      if (cachedData.matches && cachedData.matches.length > 0) {
+        console.log('Setting matches from cache:', cachedData.matches);
+        setMatches(cachedData.matches);
+      }
+    }
+  }, [cachedData]);
+
+  // Add effect for fetching profile and data after login
+  useEffect(() => {
+    const fetchProfileAndData = async () => {
+      try {
+        setIsLoading(true);
+        console.log('Fetching profile and data...');
+        
+        // Fetch profile first
+        const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profile`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!profileResponse.ok) {
+          throw new Error('Failed to fetch profile');
+        }
+
+        const profileData = await profileResponse.json();
+        console.log('Profile data received:', profileData);
+
+        // Only fetch additional data if we don't have cached data
+        if (!cachedData || !cachedData.recommendations || cachedData.recommendations.length === 0) {
+          // Fetch recommendations, awaiting, and matches
+          const [recommendationsRes, awaitingRes, matchesRes] = await Promise.all([
+            fetch(`${process.env.NEXT_PUBLIC_API_URL}/recommendations`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json',
+              },
+            }),
+            fetch(`${process.env.NEXT_PUBLIC_API_URL}/awaiting`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json',
+              },
+            }),
+            fetch(`${process.env.NEXT_PUBLIC_API_URL}/matches`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json',
+              },
+            })
+          ]);
+
+          if (!recommendationsRes.ok || !awaitingRes.ok || !matchesRes.ok) {
+            throw new Error('Failed to fetch user data');
+          }
+
+          const [recommendationsData, awaitingData, matchesData] = await Promise.all([
+            recommendationsRes.json(),
+            awaitingRes.json(),
+            matchesRes.json()
+          ]);
+
+          console.log('Setting recommendations:', recommendationsData);
+          console.log('Setting awaiting:', awaitingData);
+          console.log('Setting matches:', matchesData);
+
+          setRecommendations(recommendationsData.recommendations || []);
+          setAwaiting(awaitingData.awaiting || []);
+          setMatches(matchesData.matches || []);
+        }
+
+        // Set notifications if available
+        if (profileData.notifications) {
+          setSystemNotifications(profileData.notifications);
+          setHasNewNotifications(true);
+        }
+
+      } catch (error) {
+        console.error('Error fetching profile and data:', error);
+        if (error instanceof Error && error.message.includes('401')) {
+          localStorage.removeItem('token');
+          navigate('/login');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    // Call the fetch function
+    fetchProfileAndData();
+
+    // Set up periodic refresh
+    const refreshInterval = setInterval(fetchProfileAndData, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(refreshInterval);
+  }, [navigate, cachedData]);
+
   useEffect(() => {
     // Set system notifications from props if provided
-    console.log('Dashboard useEffect - notifications prop:', notifications);
-    console.log('Dashboard useEffect - notifications length:', notifications.length);
-    console.log('Dashboard useEffect - notifications content:', JSON.stringify(notifications, null, 2));
-    
     if (notifications && notifications.length > 0) {
       console.log('Setting system notifications from props:', notifications);
       setSystemNotifications(notifications);
       setHasNewNotifications(true);
-    } else {
-      console.log('No notifications received in props or empty array');
-      setSystemNotifications([]);
     }
   }, [notifications]);
 

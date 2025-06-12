@@ -341,11 +341,15 @@ const MultiStepRegister = () => {
                 <Label htmlFor="country" className="text-sm font-medium text-white">Country *</Label>
                 <Select value={formData.country} onValueChange={(value) => handleInputChange('country', value)}>
                   <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder="Select your country" className="text-white/60" />
+                    <SelectValue placeholder="Select your country" className="text-black/60 data-[state=checked]:text-violet-900" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-purple-900/95 backdrop-blur-sm border-white/30">
+                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
                     {countries.map((country) => (
-                      <SelectItem key={country} value={country} className="text-white hover:bg-white/10">
+                      <SelectItem 
+                        key={country} 
+                        value={country} 
+                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
+                      >
                         {country}
                       </SelectItem>
                     ))}
@@ -361,11 +365,15 @@ const MultiStepRegister = () => {
                   disabled={!formData.country}
                 >
                   <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder={formData.country ? "Select your city" : "Select country first"} className="text-white/60" />
+                    <SelectValue placeholder={formData.country ? "Select your city" : "Select country first"} className="text-black/60 data-[state=checked]:text-violet-900" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-purple-900/95 backdrop-blur-sm border-white/30">
+                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
                     {availableCities.map((city) => (
-                      <SelectItem key={city} value={city} className="text-white hover:bg-white/10">
+                      <SelectItem 
+                        key={city} 
+                        value={city} 
+                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
+                      >
                         {city}
                       </SelectItem>
                     ))}
@@ -396,11 +404,15 @@ const MultiStepRegister = () => {
                 <Label htmlFor="birth_country" className="text-sm font-medium text-white">Country of Birth *</Label>
                 <Select value={formData.birth_country} onValueChange={(value) => handleInputChange('birth_country', value)}>
                   <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder="Select country of birth" className="text-white/60" />
+                    <SelectValue placeholder="Select country of birth" className="text-black/60 data-[state=checked]:text-violet-900" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-purple-900/95 backdrop-blur-sm border-white/30">
+                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
                     {countries.map((country) => (
-                      <SelectItem key={country} value={country} className="text-white hover:bg-white/10">
+                      <SelectItem 
+                        key={country} 
+                        value={country} 
+                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
+                      >
                         {country}
                       </SelectItem>
                     ))}
@@ -416,11 +428,15 @@ const MultiStepRegister = () => {
                   disabled={!formData.birth_country}
                 >
                   <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder={formData.birth_country ? "Select city of birth" : "Select country first"} className="text-white/60" />
+                    <SelectValue placeholder={formData.birth_country ? "Select city of birth" : "Select country first"} className="text-black/60 data-[state=checked]:text-violet-900" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-purple-900/95 backdrop-blur-sm border-white/30">
+                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
                     {availableBirthCities.map((city) => (
-                      <SelectItem key={city} value={city} className="text-white hover:bg-white/10">
+                      <SelectItem 
+                        key={city} 
+                        value={city} 
+                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
+                      >
                         {city}
                       </SelectItem>
                     ))}
@@ -436,6 +452,7 @@ const MultiStepRegister = () => {
                   value={formData.dob}
                   onChange={(date) => handleInputChange('dob', date)}
                   placeholder="Pick a date"
+                  className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20"
                 />
               </div>
 
@@ -451,7 +468,7 @@ const MultiStepRegister = () => {
                     placeholder="14:30"
                     required
                   />
-                  <Clock className="absolute right-3 top-3 h-5 w-5 text-white/70 pointer-events-none" />
+                  <Clock className="absolute right-3 top-3 h-5 w-5 text-violet-300 pointer-events-none" />
                 </div>
                 <p className="text-xs text-white/70">Format: 24-hour time (e.g., 14:30 for 2:30 PM)</p>
               </div>
@@ -486,22 +503,49 @@ const MultiStepRegister = () => {
           <div className="space-y-6">
             <div className="space-y-2">
               <Label className="text-sm font-medium text-white">Hobbies & Interests *</Label>
-              <p className="text-sm text-white/70">Select at least one hobby or interest</p>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-3 border border-white/30 rounded-md bg-white/10 backdrop-blur-sm">
+              <p className="text-sm text-white/70">Select up to 5 hobbies or interests</p>
+              <div className="grid grid-cols-4 lg:grid-cols-5 gap-1.5 max-h-[300px] overflow-y-auto p-2">
                 {hobbiesOptions.map((hobby) => (
-                  <div key={hobby} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id={hobby}
-                      checked={formData.hobbies.includes(hobby)}
-                      onChange={() => handleHobbyToggle(hobby)}
-                      className="rounded border-white/30 bg-white/10 text-violet-500"
-                    />
-                    <Label htmlFor={hobby} className="text-sm text-white">{hobby}</Label>
-                  </div>
+                  <button
+                    key={hobby}
+                    type="button"
+                    onClick={() => handleHobbyToggle(hobby)}
+                    disabled={!formData.hobbies.includes(hobby) && formData.hobbies.length >= 5}
+                    className={cn(
+                      "group relative p-1.5 rounded-md text-left transition-all duration-200",
+                      "border hover:border-violet-500/50",
+                      "focus:outline-none focus:ring-1 focus:ring-violet-500 focus:ring-offset-1 focus:ring-offset-black",
+                      formData.hobbies.includes(hobby)
+                        ? "bg-gradient-to-br from-violet-500 to-purple-600 border-violet-500 text-white shadow-md shadow-violet-500/20"
+                        : "bg-white/5 border-white/10 text-white/90 hover:bg-white/10",
+                      !formData.hobbies.includes(hobby) && formData.hobbies.length >= 5 && "opacity-40 cursor-not-allowed hover:border-white/10 hover:bg-white/5"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-xs truncate">{hobby}</span>
+                      {formData.hobbies.includes(hobby) && (
+                        <div className="flex-shrink-0 ml-1">
+                          <Check className="h-3 w-3" />
+                        </div>
+                      )}
+                    </div>
+                    <div className={cn(
+                      "absolute inset-0 rounded-md transition-opacity duration-200",
+                      formData.hobbies.includes(hobby)
+                        ? "bg-gradient-to-br from-violet-500/20 to-purple-600/20 opacity-100"
+                        : "bg-gradient-to-br from-violet-500/0 to-purple-600/0 opacity-0 group-hover:opacity-100"
+                    )} />
+                  </button>
                 ))}
               </div>
-              <p className="text-sm text-white/70">Selected: {formData.hobbies.length} hobbies</p>
+              <div className="flex items-center justify-between mt-3 px-1">
+                <p className="text-xs text-white/70">
+                  Selected: {formData.hobbies.length}/5 hobbies
+                </p>
+                {formData.hobbies.length >= 5 && (
+                  <span className="text-xs text-violet-300 font-medium">Maximum limit reached</span>
+                )}
+              </div>
             </div>
           </div>
         );
@@ -527,7 +571,7 @@ const MultiStepRegister = () => {
           </div>
           <div>
             <CardTitle className="text-2xl font-semibold text-white">
-              Join Love Bhagya
+              Get Aligned
             </CardTitle>
             <CardDescription className="text-white/70 mt-2">
               Create your profile and find your soulmate
