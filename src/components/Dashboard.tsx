@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Heart, Bell, Clock, Users, User, LogOut, Star, X } from "lucide-react";
+import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin } from "lucide-react";
 import { config } from "../config/api";
 import UserActions from "./UserActions";
 import ProfileView from "./ProfileView";
@@ -15,6 +15,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import ChatWithDestiny from "./ChatWithDestiny";
 import React from "react";
 import { User as UserType, Notification } from "../types";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 
 interface DashboardMessage {
   id: string;
@@ -225,6 +227,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
 
   const UserCard = React.forwardRef<HTMLDivElement, { user: UserType }>(({ user }, ref) => {
     const [isLoading, setIsLoading] = useState(false);
+    const [showPhotos, setShowPhotos] = useState(false);
+
+    const handleCardClick = (e: React.MouseEvent) => {
+      // Only open dialog if the click is on the card background, not on a button
+      if ((e.target as HTMLElement).closest('button')) return;
+      setShowPhotos(true);
+    };
 
     const handleAction = async (actionType: 'skip' | 'align') => {
       if (!userUID) return;
@@ -315,94 +324,190 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     };
 
     return (
-      <motion.div
-        ref={ref}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        className="relative"
-      >
-        <Card className="overflow-hidden bg-white/5 backdrop-blur-xl border border-white/10 hover:border-white/20 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4 mb-4">
-              <Avatar className="w-16 h-16 ring-2 ring-white/20">
-                <AvatarImage src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} />
-                <AvatarFallback className="bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xl font-bold">
-                  {user.name?.charAt(0) || <User className="w-8 h-8" />}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <h3 className="text-lg font-semibold text-white">{user.name}</h3>
-                {user.age && (
-                  <p className="text-white/70">{user.age} years old</p>
+      <>
+        <motion.div
+          ref={ref}
+          className="cursor-pointer"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Card className="relative overflow-hidden border-0 shadow-2xl bg-white/10 backdrop-blur-xl border border-white/20 hover:shadow-3xl transition-all duration-500 group">
+            <CardContent className="p-6" onClick={handleCardClick}>
+              <div className="flex items-center space-x-4 mb-4">
+                <Avatar className="w-16 h-16 ring-2 ring-white/20">
+                  <AvatarImage src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} />
+                  <AvatarFallback className="bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xl font-bold">
+                    {user.name?.charAt(0) || <User className="w-8 h-8" />}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">{user.name}</h3>
+                  {user.age && (
+                    <p className="text-white/70">{user.age} years old</p>
+                  )}
+                  {user.city && user.country && (
+                    <p className="text-white/70">📍 {user.city}, {user.country}</p>
+                  )}
+                  {user.kundliScore !== undefined && (
+                    <div className="flex items-center mt-1">
+                      <Star className="w-4 h-4 text-yellow-400 mr-1" />
+                      <span className="text-sm text-white/70 font-medium">
+                        Compatibility: {user.kundliScore}/10
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                {user.hobbies && (
+                  typeof user.hobbies === 'string' ? (
+                    user.hobbies.split(',').map((hobby, index) => (
+                      <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
+                        {hobby.trim()}
+                      </Badge>
+                    ))
+                  ) : (
+                    user.hobbies.map((hobby, index) => (
+                      <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
+                        {hobby}
+                      </Badge>
+                    ))
+                  )
                 )}
               </div>
-            </div>
 
-            <div className="flex flex-wrap gap-2 mb-4">
-              {user.hobbies && (
-                typeof user.hobbies === 'string' ? (
-                  user.hobbies.split(',').map((hobby, index) => (
-                    <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
-                      {hobby.trim()}
-                    </Badge>
-                  ))
-                ) : (
-                  user.hobbies.map((hobby, index) => (
-                    <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
-                      {hobby}
-                    </Badge>
-                  ))
-                )
-              )}
-            </div>
+              <div className="flex justify-center items-center gap-6 mt-6">
+                {/* Align Button or Waiting Clock */}
+                <div className="relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                  {user.user_align ? (
+                    // Show waiting clock icon if user_align is true
+                    <div className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-emerald-300" />
+                    </div>
+                  ) : (
+                    // Show align button if user_align is false
+                    <Button
+                      onClick={e => { e.stopPropagation(); handleAction('align'); }}
+                      variant="outline"
+                      size="lg"
+                      disabled={isLoading}
+                      className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                    >
+                      <Heart className="w-4 h-4 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
+                    </Button>
+                  )}
+                  <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                    {user.user_align ? 'Waiting' : 'Align'}
+                  </span>
+                </div>
 
-            <div className="flex justify-center items-center gap-6 mt-6">
-              {/* Align Button or Waiting Clock */}
-              <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                {user.user_align ? (
-                  // Show waiting clock icon if user_align is true
-                  <div className="relative w-16 h-16 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-emerald-300" />
-                  </div>
-                ) : (
-                  // Show align button if user_align is false
+                {/* Skip Button */}
+                <div className="relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
                   <Button
-                    onClick={() => handleAction('align')}
+                    onClick={e => { e.stopPropagation(); handleAction('skip'); }}
                     variant="outline"
                     size="lg"
                     disabled={isLoading}
-                    className="relative w-16 h-16 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                    className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
                   >
-                    <Heart className="w-6 h-6 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
+                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
                   </Button>
-                )}
-                <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-sm text-white/60 font-medium">
-                  {user.user_align ? 'Waiting' : 'Align'}
-                </span>
+                  <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                    Skip
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <Dialog open={showPhotos} onOpenChange={setShowPhotos}>
+          <DialogContent className="max-w-lg bg-purple-950/30 backdrop-blur-xl border-white/20 [&>button]:hidden">
+            <div className="absolute right-4 top-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full bg-white/5 backdrop-blur-xl border border-white/10 text-white/80 hover:bg-white/10 hover:text-white transition-all duration-300"
+                onClick={() => setShowPhotos(false)}
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">Close</span>
+              </Button>
+            </div>
+            <div className="flex flex-col gap-6 pt-4">
+              {/* User Info Section */}
+              <div className="flex items-start gap-4">
+                <Avatar className="w-20 h-20 ring-2 ring-white/20">
+                  <AvatarImage src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} />
+                  <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-500 text-white font-semibold text-xl">
+                    {user.name?.charAt(0) || <User className="w-8 h-8" />}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <h2 className="text-xl font-bold text-white mb-2">{user.name}</h2>
+                  {user.city && user.country && (
+                    <p className="text-white/80 flex items-center gap-2 mb-2 text-sm">
+                      <MapPin className="w-4 h-4" />
+                      {user.city}, {user.country}
+                    </p>
+                  )}
+                  {user.kundliScore !== undefined && (
+                    <p className="text-white/80 flex items-center gap-2 mb-2 text-sm">
+                      <Star className="w-4 h-4 text-yellow-400" />
+                      Compatibility: {user.kundliScore}/10
+                    </p>
+                  )}
+                  {user.hobbies && user.hobbies.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {(typeof user.hobbies === 'string' ? user.hobbies.split(',').map(h => h.trim()) : user.hobbies).map((hobby, index) => (
+                        <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20 text-xs">
+                          {hobby}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Skip Button */}
-              <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                <Button
-                  onClick={() => handleAction('skip')}
-                  variant="outline"
-                  size="lg"
-                  disabled={isLoading}
-                  className="relative w-16 h-16 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
-                >
-                  <X className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
-                </Button>
-                <span className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-sm text-white/60 font-medium">
-                  Skip
-                </span>
+              {/* Photo Carousel */}
+              <div className="flex items-center justify-center">
+                <div className="relative w-full max-w-sm px-12">
+                  <Carousel className="w-full">
+                    <CarouselContent>
+                      {user.images?.map((image, index) => (
+                        <CarouselItem key={`image-${user.uid}-${index}`}>
+                          <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-white/5 backdrop-blur-xl border border-white/10 max-h-[400px]">
+                            <img
+                              src={image}
+                              alt={`Photo ${index + 1} of ${user.name}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                console.error('Failed to load image:', image);
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                    {user.images && user.images.length > 1 && (
+                      <>
+                        <CarouselPrevious className="bg-white/10 backdrop-blur-xl border-white/20 text-white hover:bg-white/20 -left-12" />
+                        <CarouselNext className="bg-white/10 backdrop-blur-xl border-white/20 text-white hover:bg-white/20 -right-12" />
+                      </>
+                    )}
+                  </Carousel>
+                </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   });
 
@@ -471,71 +576,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
       <div className="border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between">
           <div className="flex items-center space-x-2 sm:space-x-4">
-            <Popover open={isMatchesOpen} onOpenChange={setIsMatchesOpen}>
-              <PopoverTrigger asChild>
-                <div className="relative cursor-pointer">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-violet-500 to-purple-500 rounded-xl blur opacity-30"></div>
-                  <img 
-                    src="/lovable-uploads/b01e8af5-640c-4d6b-a324-774afb9bbf88.png" 
-                    alt="Aligned Logo" 
-                    className="relative w-12 h-12 sm:w-16 sm:h-16 md:w-24 md:h-24 object-cover rounded-xl hover:scale-105 transition-transform duration-300"
-                  />
-                  {matches.length > 0 && (
-                    <Badge className="absolute -top-2 -right-2 h-5 w-5 sm:h-6 sm:w-6 p-0 flex items-center justify-center bg-red-500 text-white text-xs font-bold">
-                      {matches.length}
-                    </Badge>
-                  )}
-                </div>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0 bg-white/5 backdrop-blur-xl border border-white/10" align="start">
-                <div className="p-4 border-b border-white/10">
-                  <h3 className="font-semibold text-white text-lg">Your Matches</h3>
-                  <p className="text-white/60 text-sm">People who liked you back</p>
-                </div>
-                <div className="max-h-96 overflow-y-auto p-4">
-                  {matches.length > 0 ? (
-                    <div className="space-y-3">
-                      {matches.map((user) => (
-                        <div 
-                          key={`match-${user.uid}`}
-                          className="flex items-center space-x-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 cursor-pointer transition-colors"
-                          onClick={() => {
-                            handleUserClick(user);
-                            setIsMatchesOpen(false);
-                          }}
-                        >
-                          <Avatar className="w-12 h-12">
-                            <AvatarImage src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} />
-                            <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-500 text-white">
-                              {user.name?.charAt(0) || <User className="w-6 h-6" />}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-white truncate">{user.name}</p>
-                            {user.kundliScore !== undefined && user.kundliScore !== null && (
-                              <div className="flex items-center">
-                                <Star className="w-3 h-3 text-yellow-400 mr-1" />
-                                <span className="text-xs text-white/70">
-                                  {user.kundliScore}/36
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Heart className="w-8 h-8 text-white/40 mx-auto mb-2" />
-                      <p className="text-white/60 text-sm">No matches yet</p>
-                    </div>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
-            <div className="hidden sm:block">
-              <h1 className="text-4xl sm:text-6xl font-bold text-white tracking-tight font-['Lavanderia']">Aligned</h1>
-            </div>
+            <h1 className="text-3xl sm:text-6xl font-bold text-white tracking-tight font-['Lavanderia']">Aligned</h1>
           </div>
           <div className="flex gap-2 sm:gap-3">
             <Popover open={isNotificationsOpen} onOpenChange={(open) => {
