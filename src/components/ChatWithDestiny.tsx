@@ -73,9 +73,13 @@ const ChatWithDestiny = ({ userUID, onClose }: ChatWithDestinyProps) => {
   useEffect(() => {
     // Scroll to bottom when new messages arrive
     if (chatHistoryRef.current) {
-      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+      const scrollOptions = {
+        top: chatHistoryRef.current.scrollHeight,
+        behavior: 'smooth' as const
+      };
+      chatHistoryRef.current.scrollTo(scrollOptions);
     }
-  }, [messages]);
+  }, [messages, isLoading]);
 
   const handlePopupClose = () => {
     console.log('ChatWithDestiny - Popup closed by user');
@@ -230,8 +234,8 @@ const ChatWithDestiny = ({ userUID, onClose }: ChatWithDestinyProps) => {
     <>
       {/* Permanent D logo */}
       <div className="fixed bottom-6 right-6 z-40">
-        <div className="w-36 h-36 rounded-full bg-gradient-to-br from-indigo-600 to-indigo-700 flex items-center justify-center shadow-lg">
-          <span className="text-white text-6xl font-['Lavanderia']">D</span>
+        <div className="w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-indigo-600 to-indigo-700 flex items-center justify-center shadow-lg">
+          <span className="text-white text-4xl sm:text-6xl font-['Lavanderia']">D</span>
         </div>
       </div>
 

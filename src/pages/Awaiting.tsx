@@ -19,6 +19,7 @@ interface User {
   bio?: string;
   images?: string[];
   kundliScore?: number;
+  user_align?: boolean;
 }
 
 interface AwaitingProps {
@@ -81,7 +82,7 @@ const Awaiting = ({ cachedData }: AwaitingProps) => {
             {user.hobbies && (
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-1.5">
-                  {user.hobbies.split(',').slice(0, 3).map((hobby, index) => (
+                  {(typeof user.hobbies === 'string' ? user.hobbies.split(',') : user.hobbies).slice(0, 3).map((hobby, index) => (
                     <Badge 
                       key={index} 
                       variant="secondary" 

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Profile from "../components/Profile";
@@ -95,26 +94,6 @@ const ProfilePage = ({ cachedProfileData, isLoadingProfile, onLogout }: ProfileP
           </h1>
           
           <div className="flex gap-2">
-            {!isEditing && (
-              <>
-                <Button 
-                  onClick={handleUpdate}
-                  variant="outline"
-                  className="border-blue-400/30 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20"
-                >
-                  <RefreshCw className="w-4 h-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Update</span>
-                </Button>
-                <Button 
-                  onClick={handleEdit}
-                  variant="outline"
-                  className="border-violet-400/30 bg-violet-500/10 text-violet-200 hover:bg-violet-500/20"
-                >
-                  <Edit className="w-4 h-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Edit</span>
-                </Button>
-              </>
-            )}
             <Button 
               onClick={handleLogout}
               variant="outline"

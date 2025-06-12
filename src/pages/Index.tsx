@@ -154,7 +154,8 @@ const Index = () => {
       tob: data.TOB || data.tob || '',
       hobbies: hobbies,
       images: images,
-      login: data.LOGIN || data.login || ''
+      login: data.LOGIN || data.login || '',
+      user_align: data.user_align || false
     };
   };
 
@@ -290,7 +291,8 @@ const Index = () => {
           // Add the kundliScore from the recommendation card
           const userWithScore = {
             ...transformedUser,
-            kundliScore: score !== undefined && score !== null ? score : undefined
+            kundliScore: score !== undefined && score !== null ? score : undefined,
+            user_align: card.user_align
           };
           
           console.log(`User ${transformedUser.name} has score: ${score}`);
@@ -389,7 +391,8 @@ const Index = () => {
               const transformedUser = transformUserData(userProfile);
               const userWithScore = {
                 ...transformedUser,
-                kundliScore: score !== undefined && score !== null ? score : undefined
+                kundliScore: score !== undefined && score !== null ? score : undefined,
+                user_align: card.user_align || false
               };
               
               // Update the appropriate queue with the new user

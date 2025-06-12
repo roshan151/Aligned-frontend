@@ -45,4 +45,5 @@ export interface ProfileData {
   images?: string[];
   login?: string;
   kundliScore?: number;
+  user_align?: boolean;
 } 
