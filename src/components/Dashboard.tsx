@@ -744,13 +744,6 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             >
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Discover</span>
-              <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {isLoading.recommendations ? (
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  recommendations.length
-                )}
-              </Badge>
             </TabsTrigger>
             <TabsTrigger 
               value="awaiting" 
@@ -758,13 +751,6 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             >
               <Clock className="w-4 h-4" />
               <span className="hidden sm:inline">Awaiting</span>
-              <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {isLoading.awaiting ? (
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  awaiting.length
-                )}
-              </Badge>
             </TabsTrigger>
             <TabsTrigger 
               value="matches" 
@@ -772,13 +758,6 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             >
               <Heart className="w-4 h-4" />
               <span className="hidden sm:inline">Matches</span>
-              <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {isLoading.matches ? (
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  matches.length
-                )}
-              </Badge>
             </TabsTrigger>
           </TabsList>
 
