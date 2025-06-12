@@ -9,36 +9,7 @@ import Notifications from "./Notifications";
 import Awaiting from "./Awaiting";
 import ProfilePage from "./Profile";
 import { config } from "../config/api";
-
-interface ProfileData {
-  uid: string;
-  email: string;
-  name: string;
-  gender?: string;
-  city?: string;
-  country?: string;
-  birth_city?: string;
-  birth_country?: string;
-  profession?: string;
-  dob?: string;
-  tob?: string;
-  hobbies?: string[];
-  images?: string[];
-  login?: string;
-  kundliScore?: number;
-}
-
-interface Notification {
-  message: string;
-  updated: string;
-}
-
-interface DashboardData {
-  recommendations: any[];
-  matches: any[];
-  awaiting: any[];
-  notifications: any[];
-}
+import { User, Notification, DashboardData, ProfileData } from "../types";
 
 const Index = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -49,6 +20,7 @@ const Index = () => {
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   const fetchUserProfile = async (uid: string) => {
     try {
@@ -387,7 +359,22 @@ const Index = () => {
     setIsLoadingDashboard(true);
     
     try {
-      // Process recommendation cards progressively
+      // First, ensure we have the latest profile data
+      const additionalProfileData = await fetchUserProfile(uid);
+      if (!additionalProfileData) {
+        throw new Error('Failed to fetch profile data');
+      }
+      
+      // Merge additional profile data with login profile data
+      const mergedProfileData = {
+        ...profileDataFromLogin,
+        ...transformUserData(additionalProfileData)
+      };
+      console.log('Merged profile data:', mergedProfileData);
+      setProfileData(mergedProfileData);
+      localStorage.setItem('profileData', JSON.stringify(mergedProfileData));
+
+      // Then process recommendation cards progressively
       if (loginData.recommendationCards && Array.isArray(loginData.recommendationCards)) {
         console.log('Processing recommendation cards from login:', loginData.recommendationCards);
         
@@ -434,22 +421,10 @@ const Index = () => {
           }
         }
       }
-
-      // Fetch additional profile data if needed
-      const additionalProfileData = await fetchUserProfile(uid);
-      
-      // Merge additional profile data with login profile data if available
-      if (additionalProfileData) {
-        const mergedProfileData = {
-          ...profileDataFromLogin,
-          ...transformUserData(additionalProfileData)
-        };
-        console.log('Merged profile data:', mergedProfileData);
-        setProfileData(mergedProfileData);
-        localStorage.setItem('profileData', JSON.stringify(mergedProfileData));
-      }
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error('Error in handleSuccessfulLogin:', error);
+      // If profile fetch fails, at least keep the login data
+      setProfileData(profileDataFromLogin);
     } finally {
       setIsLoadingProfile(false);
       setIsLoadingDashboard(false);
@@ -501,6 +476,14 @@ const Index = () => {
 
   console.log('Index render - systemNotifications state:', systemNotifications);
   console.log('Index render - systemNotifications length:', systemNotifications.length);
+
+  const handleUserClick = (user: User) => {
+    setSelectedUser(user);
+  };
+
+  const handleBackToList = () => {
+    setSelectedUser(null);
+  };
 
   if (isLoading) {
     return (

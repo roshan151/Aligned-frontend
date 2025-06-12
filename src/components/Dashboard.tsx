@@ -14,30 +14,7 @@ import { formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import ChatWithDestiny from "./ChatWithDestiny";
 import React from "react";
-
-interface Notification {
-  uid: string;
-  name: string;
-  message: string;
-  timestamp: string;
-  updated: string;
-}
-
-interface User {
-  uid: string;
-  name: string;
-  email?: string;
-  city?: string;
-  country?: string;
-  age?: number;
-  gender?: string;
-  hobbies?: string | string[];
-  profilePicture?: string;
-  bio?: string;
-  images?: string[];
-  kundliScore?: number;
-  user_align?: boolean;
-}
+import { User as UserType, Notification } from "../types";
 
 interface DashboardMessage {
   id: string;
@@ -51,9 +28,9 @@ interface DashboardProps {
   setIsLoggedIn: (value: boolean) => void;
   onLogout: () => void;
   cachedData?: {
-    recommendations?: User[];
-    matches?: User[];
-    awaiting?: User[];
+    recommendations?: UserType[];
+    matches?: UserType[];
+    awaiting?: UserType[];
     notifications?: Notification[];
   };
   isLoadingData?: boolean;
@@ -62,13 +39,13 @@ interface DashboardProps {
 
 const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData, notifications = [] }: DashboardProps) => {
   const navigate = useNavigate();
-  const [matches, setMatches] = useState<User[]>([]);
-  const [recommendations, setRecommendations] = useState<User[]>([]);
-  const [notificationUsers, setNotificationUsers] = useState<User[]>([]);
-  const [awaiting, setAwaiting] = useState<User[]>([]);
+  const [matches, setMatches] = useState<UserType[]>([]);
+  const [recommendations, setRecommendations] = useState<UserType[]>([]);
+  const [notificationUsers, setNotificationUsers] = useState<UserType[]>([]);
+  const [awaiting, setAwaiting] = useState<UserType[]>([]);
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [isMatchesOpen, setIsMatchesOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
@@ -175,7 +152,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     navigate("/profile");
   };
 
-  const handleUserClick = (user: User) => {
+  const handleUserClick = (user: UserType) => {
     setSelectedUser(user);
   };
 
@@ -246,7 +223,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   console.log('Dashboard render - Current messages:', messages);
   console.log('Dashboard render - Total notification count:', totalNotificationCount);
 
-  const UserCard = React.forwardRef<HTMLDivElement, { user: User }>(({ user }, ref) => {
+  const UserCard = React.forwardRef<HTMLDivElement, { user: UserType }>(({ user }, ref) => {
     const [isLoading, setIsLoading] = useState(false);
 
     const handleAction = async (actionType: 'skip' | 'align') => {
