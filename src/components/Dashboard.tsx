@@ -202,13 +202,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
         case 'MATCHED':
         case 'Matched':
           // Move to matches queue
-          setMatches(prev => [...prev, selectedUser]);
+          setMatches(prev => [...prev.filter(u => u.uid !== userUID), selectedUser]);
           console.log(`Moving user ${selectedUser.name} to matches queue`);
           break;
         case 'AWAITING':
         case 'Awaiting':
           // Move to awaiting queue
-          setAwaiting(prev => [...prev, selectedUser]);
+          setAwaiting(prev => [...prev.filter(u => u.uid !== userUID), selectedUser]);
           console.log(`Moving user ${selectedUser.name} to awaiting queue`);
           break;
         default:
@@ -294,6 +294,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                 user_align: userAlign
               };
 
+              // Remove user from all queues first
+              setMatches(prev => prev.filter(u => u.uid !== user.uid));
+              setNotificationUsers(prev => prev.filter(u => u.uid !== user.uid));
+              setAwaiting(prev => prev.filter(u => u.uid !== user.uid));
+
+              // Then add to the appropriate queue
               switch (queue) {
                 case 'MATCHED':
                 case 'Matched':
@@ -308,11 +314,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                   console.log(`Moving user ${user.name} to awaiting queue`);
                   break;
                 default:
-                  console.log(`Unknown queue type: ${queue}, removing user from all queues`);
-                  // Remove from other queues if not moving to a specific queue
-                  setMatches(prev => prev.filter(u => u.uid !== user.uid));
-                  setNotificationUsers(prev => prev.filter(u => u.uid !== user.uid));
-                  setAwaiting(prev => prev.filter(u => u.uid !== user.uid));
+                  console.log(`Unknown queue type: ${queue}, user removed from all queues`);
                   break;
               }
             } else {
