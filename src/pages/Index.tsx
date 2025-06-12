@@ -22,6 +22,57 @@ const Index = () => {
   const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
+  const fetchTabData = async (tab: string) => {
+    if (!userUID) return;
+    
+    try {
+      const endpoint = tab === "recommendations" 
+        ? `/get:recommendations/${userUID}`
+        : tab === "matches"
+        ? `/get:matches/${userUID}`
+        : `/get:awaiting/${userUID}`;
+
+      const response = await fetch(`${config.URL}${endpoint}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${tab}`);
+      }
+
+      const data = await response.json();
+      
+      setDashboardData(prevData => {
+        if (!prevData) return {
+          recommendations: [],
+          matches: [],
+          awaiting: [],
+          notifications: []
+        };
+        
+        const newData = { ...prevData };
+        switch (tab) {
+          case "recommendations":
+            newData.recommendations = data.recommendations || [];
+            break;
+          case "matches":
+            newData.matches = data.matches || [];
+            break;
+          case "awaiting":
+            newData.awaiting = data.awaiting || [];
+            break;
+        }
+        return newData;
+      });
+    } catch (error) {
+      console.error(`Error fetching ${tab}:`, error);
+    }
+  };
+
   const fetchUserProfile = async (uid: string) => {
     try {
       const response = await fetch(`${config.URL}${config.ENDPOINTS.GET_PROFILE}/${uid}`, {
@@ -326,11 +377,17 @@ const Index = () => {
     setUserUID(uid);
     setIsLoggedIn(true);
     
+    // Store only UID and notifications from login response
+    const minimalLoginData = {
+      uid: loginData.uid,
+      notifications: loginData.notifications || []
+    };
+    
     // Store notifications from login response
-    if (loginData.notifications && Array.isArray(loginData.notifications)) {
-      console.log('Setting system notifications from login:', loginData.notifications);
+    if (minimalLoginData.notifications && Array.isArray(minimalLoginData.notifications)) {
+      console.log('Setting system notifications from login:', minimalLoginData.notifications);
       // Remove duplicates based on message and updated timestamp
-      const uniqueNotifications = loginData.notifications.filter((notification, index, self) =>
+      const uniqueNotifications = minimalLoginData.notifications.filter((notification, index, self) =>
         index === self.findIndex((n) => 
           n.message === notification.message && n.updated === notification.updated
         )
@@ -338,14 +395,8 @@ const Index = () => {
       setSystemNotifications(uniqueNotifications);
     }
 
-    // Transform and store profile data from login response
-    const profileDataFromLogin = transformLoginDataToProfile(loginData);
-    console.log('Profile data from login:', profileDataFromLogin);
-    setProfileData(profileDataFromLogin);
-    localStorage.setItem('profileData', JSON.stringify(profileDataFromLogin));
-
-    // Store the complete login data
-    localStorage.setItem('userData', JSON.stringify(loginData));
+    // Store only the minimal login data
+    localStorage.setItem('userData', JSON.stringify(minimalLoginData));
     
     // Initialize empty dashboard data
     const initialDashboardData: DashboardData = {
@@ -361,73 +412,24 @@ const Index = () => {
     setIsLoadingDashboard(true);
     
     try {
-      // First, ensure we have the latest profile data
-      const additionalProfileData = await fetchUserProfile(uid);
-      if (!additionalProfileData) {
+      // Fetch profile data
+      const profileData = await fetchUserProfile(uid);
+      if (!profileData) {
         throw new Error('Failed to fetch profile data');
       }
       
-      // Merge additional profile data with login profile data
-      const mergedProfileData = {
-        ...profileDataFromLogin,
-        ...transformUserData(additionalProfileData)
-      };
-      console.log('Merged profile data:', mergedProfileData);
-      setProfileData(mergedProfileData);
-      localStorage.setItem('profileData', JSON.stringify(mergedProfileData));
+      // Transform and store profile data
+      const transformedProfileData = transformUserData(profileData);
+      console.log('Transformed profile data:', transformedProfileData);
+      setProfileData(transformedProfileData);
+      localStorage.setItem('profileData', JSON.stringify(transformedProfileData));
 
-      // Then process recommendation cards progressively
-      if (loginData.recommendationCards && Array.isArray(loginData.recommendationCards)) {
-        console.log('Processing recommendation cards from login:', loginData.recommendationCards);
-        
-        // Process each card individually with a delay
-        for (const card of loginData.recommendationCards) {
-          try {
-            const { recommendation_uid, score, queue } = card;
-            console.log(`Loading profile for ${recommendation_uid} in queue ${queue} with score ${score}`);
-            
-            const userProfile = await fetchUserProfile(recommendation_uid);
-            if (userProfile) {
-              const transformedUser = transformUserData(userProfile);
-              const userWithScore = {
-                ...transformedUser,
-                kundliScore: score !== undefined && score !== null ? score : undefined,
-                user_align: card.user_align || false
-              };
-              
-              // Update the appropriate queue with the new user
-              setDashboardData(prevData => {
-                if (!prevData) return initialDashboardData;
-                
-                const newData = { ...prevData };
-                switch (queue) {
-                  case 'RECOMMENDATIONS':
-                    newData.recommendations = [...prevData.recommendations, userWithScore];
-                    break;
-                  case 'MATCHED':
-                    newData.matches = [...prevData.matches, userWithScore];
-                    break;
-                  case 'AWAITING':
-                    newData.awaiting = [...prevData.awaiting, userWithScore];
-                    break;
-                  default:
-                    newData.recommendations = [...prevData.recommendations, userWithScore];
-                }
-                return newData;
-              });
-              
-              // Add a small delay between each card load for animation
-              await new Promise(resolve => setTimeout(resolve, 100));
-            }
-          } catch (error) {
-            console.error('Error loading recommendation card:', card, error);
-          }
-        }
-      }
+      // Fetch initial dashboard data
+      await fetchTabData('recommendations');
+      await fetchTabData('matches');
+      await fetchTabData('awaiting');
     } catch (error) {
       console.error('Error in handleSuccessfulLogin:', error);
-      // If profile fetch fails, at least keep the login data
-      setProfileData(profileDataFromLogin);
     } finally {
       setIsLoadingProfile(false);
       setIsLoadingDashboard(false);
@@ -531,8 +533,6 @@ const Index = () => {
               userUID={userUID} 
               setIsLoggedIn={setIsLoggedIn} 
               onLogout={handleLogout}
-              cachedData={dashboardData}
-              isLoadingData={isLoadingDashboard}
               notifications={systemNotifications}
             /> : 
             <Navigate to="/login" />
@@ -554,7 +554,7 @@ const Index = () => {
           path="/matches" 
           element={
             isLoggedIn ? 
-            <Matches cachedData={dashboardData?.matches} /> : 
+            <Matches /> : 
             <Navigate to="/login" />
           } 
         />
@@ -562,7 +562,7 @@ const Index = () => {
           path="/recommendations" 
           element={
             isLoggedIn ? 
-            <Recommendations cachedData={dashboardData?.recommendations} /> : 
+            <Recommendations /> : 
             <Navigate to="/login" />
           } 
         />
@@ -570,7 +570,7 @@ const Index = () => {
           path="/notifications" 
           element={
             isLoggedIn ? 
-            <Notifications cachedData={dashboardData?.notifications} /> : 
+            <Notifications /> : 
             <Navigate to="/login" />
           } 
         />
@@ -578,7 +578,7 @@ const Index = () => {
           path="/awaiting" 
           element={
             isLoggedIn ? 
-            <Awaiting cachedData={dashboardData?.awaiting} /> : 
+            <Awaiting /> : 
             <Navigate to="/login" />
           } 
         />

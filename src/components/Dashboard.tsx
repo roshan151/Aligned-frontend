@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin } from "lucide-react";
 import { config } from "../config/api";
+import { S3_CONFIG } from "../config/s3";
 import UserActions from "./UserActions";
 import ProfileView from "./ProfileView";
 import { formatDistanceToNow } from "date-fns";
@@ -15,8 +16,40 @@ import { motion, AnimatePresence } from "framer-motion";
 import ChatWithDestiny from "./ChatWithDestiny";
 import React from "react";
 import { User as UserType, Notification } from "../types";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+// Initialize S3 client
+const s3Client = new S3Client({
+  region: S3_CONFIG.REGION,
+  credentials: {
+    accessKeyId: S3_CONFIG.ACCESS_ID,
+    secretAccessKey: S3_CONFIG.ACCESS_KEY
+  }
+});
+
+// Function to get signed URL for an S3 object
+const getSignedS3Url = async (key: string) => {
+  try {
+    const command = new GetObjectCommand({
+      Bucket: S3_CONFIG.BUCKET,
+      Key: key
+    });
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // URL expires in 1 hour
+    return signedUrl;
+  } catch (error) {
+    console.error('Error generating signed URL:', error);
+    return null;
+  }
+};
+
+// Function to extract key from S3 URL
+const extractS3Key = (url: string) => {
+  const match = url.match(/amazonaws\.com\/(.+)/);
+  return match ? match[1] : null;
+};
 
 interface DashboardMessage {
   id: string;
@@ -29,150 +62,214 @@ interface DashboardProps {
   userUID: string | null;
   setIsLoggedIn: (value: boolean) => void;
   onLogout: () => void;
-  cachedData?: {
-    recommendations?: UserType[];
-    matches?: UserType[];
-    awaiting?: UserType[];
-    notifications?: Notification[];
-  };
-  isLoadingData?: boolean;
   notifications?: Notification[];
 }
 
-const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData, notifications = [] }: DashboardProps) => {
+interface RecommendationCard {
+  recommendation_uid: string;
+  name: string;
+  score: number;
+  chat_enabled: boolean;
+  user_align: boolean;
+  images?: string[]; // Array of S3 image URLs
+  city?: string;
+  country?: string;
+  hobbies?: string;
+  profession?: string;
+}
+
+const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: DashboardProps) => {
   const navigate = useNavigate();
-  const [matches, setMatches] = useState<UserType[]>([]);
-  const [recommendations, setRecommendations] = useState<UserType[]>([]);
-  const [notificationUsers, setNotificationUsers] = useState<UserType[]>([]);
-  const [awaiting, setAwaiting] = useState<UserType[]>([]);
+  const [matches, setMatches] = useState<RecommendationCard[]>([]);
+  const [recommendations, setRecommendations] = useState<RecommendationCard[]>([]);
+  const [awaiting, setAwaiting] = useState<RecommendationCard[]>([]);
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
+  const [isLoading, setIsLoading] = useState<{ [key: string]: boolean }>({
+    recommendations: false,
+    matches: false,
+    awaiting: false
+  });
+  const [selectedUser, setSelectedUser] = useState<RecommendationCard | null>(null);
   const [isMatchesOpen, setIsMatchesOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [showChat, setShowChat] = useState(true);
+  const [activeTab, setActiveTab] = useState("recommendations");
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set());
 
-  // Add effect to handle cached data from login
-  useEffect(() => {
-    if (cachedData) {
-      console.log('Using cached data from login:', cachedData);
-      
-      // Set recommendations if available
-      if (cachedData.recommendations && cachedData.recommendations.length > 0) {
-        console.log('Setting recommendations from cache:', cachedData.recommendations);
-        setRecommendations(cachedData.recommendations);
+  // Fetch profile data for a recommendation card
+  const fetchProfileData = async (uid: string) => {
+    try {
+      console.log(`Fetching profile data for UID: ${uid}`);
+      const response = await fetch(`${config.URL}/get:profile/${uid}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch profile for ${uid}`);
       }
 
-      // Set awaiting if available
-      if (cachedData.awaiting && cachedData.awaiting.length > 0) {
-        console.log('Setting awaiting from cache:', cachedData.awaiting);
-        setAwaiting(cachedData.awaiting);
+      const data = await response.json();
+      console.log(`Received profile data for ${uid}:`, data);
+
+      // Generate signed URLs for all images
+      if (data.IMAGES || data.images) {
+        const images = data.IMAGES || data.images;
+        const signedUrls = await Promise.all(
+          images.map(async (url: string) => {
+            const key = extractS3Key(url);
+            if (key) {
+              const signedUrl = await getSignedS3Url(key);
+              return signedUrl || url; // Fallback to original URL if signed URL generation fails
+            }
+            return url;
+          })
+        );
+        data.IMAGES = signedUrls;
+        data.images = signedUrls;
       }
 
-      // Set matches if available
-      if (cachedData.matches && cachedData.matches.length > 0) {
-        console.log('Setting matches from cache:', cachedData.matches);
-        setMatches(cachedData.matches);
-      }
+      return data;
+    } catch (error) {
+      console.error(`Error fetching profile for ${uid}:`, error);
+      return null;
     }
-  }, [cachedData]);
+  };
 
-  // Add effect for fetching profile and data after login
-  useEffect(() => {
-    const fetchProfileAndData = async () => {
-      try {
-        setIsLoading(true);
-        console.log('Fetching profile and data...');
-        
-        // Fetch profile first
-        const profileResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profile`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'application/json',
-          },
-        });
+  // Fetch data for each tab
+  const fetchTabData = async (tab: string) => {
+    if (!userUID) return;
+    
+    // If tab is already loaded and has data, don't fetch again
+    if (loadedTabs.has(tab)) {
+      const hasData = tab === "recommendations" ? recommendations.length > 0 :
+                     tab === "matches" ? matches.length > 0 :
+                     awaiting.length > 0;
+      if (hasData) return;
+    }
+    
+    try {
+      setIsLoading(prev => ({ ...prev, [tab]: true }));
+      const endpoint = tab === "recommendations" 
+        ? `/get:recommendations/${userUID}`
+        : tab === "matches"
+        ? `/get:matches/${userUID}`
+        : `/get:awaiting/${userUID}`;
 
-        if (!profileResponse.ok) {
-          throw new Error('Failed to fetch profile');
-        }
+      console.log(`Fetching ${tab} data from: ${config.URL}${endpoint}`);
 
-        const profileData = await profileResponse.json();
-        console.log('Profile data received:', profileData);
+      const response = await fetch(`${config.URL}${endpoint}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-        // Only fetch additional data if we don't have cached data
-        if (!cachedData || !cachedData.recommendations || cachedData.recommendations.length === 0) {
-          // Fetch recommendations, awaiting, and matches
-          const [recommendationsRes, awaitingRes, matchesRes] = await Promise.all([
-            fetch(`${process.env.NEXT_PUBLIC_API_URL}/recommendations`, {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                'Content-Type': 'application/json',
-              },
-            }),
-            fetch(`${process.env.NEXT_PUBLIC_API_URL}/awaiting`, {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                'Content-Type': 'application/json',
-              },
-            }),
-            fetch(`${process.env.NEXT_PUBLIC_API_URL}/matches`, {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                'Content-Type': 'application/json',
-              },
-            })
-          ]);
-
-          if (!recommendationsRes.ok || !awaitingRes.ok || !matchesRes.ok) {
-            throw new Error('Failed to fetch user data');
-          }
-
-          const [recommendationsData, awaitingData, matchesData] = await Promise.all([
-            recommendationsRes.json(),
-            awaitingRes.json(),
-            matchesRes.json()
-          ]);
-
-          console.log('Setting recommendations:', recommendationsData);
-          console.log('Setting awaiting:', awaitingData);
-          console.log('Setting matches:', matchesData);
-
-          setRecommendations(recommendationsData.recommendations || []);
-          setAwaiting(awaitingData.awaiting || []);
-          setMatches(matchesData.matches || []);
-        }
-
-        // Set notifications if available
-        if (profileData.notifications) {
-          setSystemNotifications(profileData.notifications);
-          setHasNewNotifications(true);
-        }
-
-      } catch (error) {
-        console.error('Error fetching profile and data:', error);
-        if (error instanceof Error && error.message.includes('401')) {
-          localStorage.removeItem('token');
-          navigate('/login');
-        }
-      } finally {
-        setIsLoading(false);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${tab}`);
       }
-    };
 
-    // Call the fetch function
-    fetchProfileAndData();
+      const data = await response.json();
+      console.log(`Raw ${tab} data:`, data);
+      
+      // Get the list of cards from the response
+      const cards = data.cards || [];
+      console.log(`Cards from ${tab}:`, cards);
+      
+      if (cards.length === 0) {
+        console.log(`No cards found for ${tab}`);
+        switch (tab) {
+          case "recommendations":
+            setRecommendations([]);
+            break;
+          case "matches":
+            setMatches([]);
+            break;
+          case "awaiting":
+            setAwaiting([]);
+            break;
+        }
+        setLoadedTabs(prev => new Set([...prev, tab]));
+        return;
+      }
 
-    // Set up periodic refresh
-    const refreshInterval = setInterval(fetchProfileAndData, 30000); // Refresh every 30 seconds
+      // Fetch profile data for each card
+      const enrichedCards = await Promise.all(
+        cards.map(async (card: any) => {
+          console.log(`Processing card:`, card);
+          const uid = card.recommendation_uid;
+          if (!uid) {
+            console.error('No UID found in card:', card);
+            return card;
+          }
+          console.log(`Fetching profile for UID: ${uid}`);
+          const profileData = await fetchProfileData(uid);
+          if (profileData) {
+            const enrichedCard = {
+              ...card,
+              recommendation_uid: uid,
+              name: profileData.NAME || profileData.name || card.name,
+              images: profileData.IMAGES || profileData.images || [],
+              city: profileData.CITY || profileData.city,
+              country: profileData.COUNTRY || profileData.country,
+              profession: profileData.PROFESSION || profileData.profession,
+              hobbies: profileData.HOBBIES || profileData.hobbies,
+              gender: profileData.GENDER || profileData.gender,
+              dob: profileData.DOB || profileData.dob
+            };
+            console.log(`Created enriched card:`, enrichedCard);
+            return enrichedCard;
+          }
+          console.log(`No profile data found for ${uid}, returning original card`);
+          return card;
+        })
+      );
+      
+      console.log(`Final enriched ${tab} data:`, enrichedCards);
+      
+      switch (tab) {
+        case "recommendations":
+          setRecommendations(enrichedCards);
+          break;
+        case "matches":
+          setMatches(enrichedCards);
+          break;
+        case "awaiting":
+          setAwaiting(enrichedCards);
+          break;
+      }
+      setLoadedTabs(prev => new Set([...prev, tab]));
+    } catch (error) {
+      console.error(`Error fetching ${tab}:`, error);
+    } finally {
+      setIsLoading(prev => ({ ...prev, [tab]: false }));
+    }
+  };
 
-    return () => clearInterval(refreshInterval);
-  }, [navigate, cachedData]);
-
+  // Effect to fetch initial data
   useEffect(() => {
-    // Set system notifications from props if provided
+    if (userUID) {
+      console.log('Initial data fetch for recommendations...');
+      fetchTabData('recommendations');
+    }
+  }, [userUID]);
+
+  // Effect to handle tab changes
+  useEffect(() => {
+    if (userUID) {
+      console.log(`Tab changed to ${activeTab}, fetching data if needed...`);
+      fetchTabData(activeTab);
+    }
+  }, [userUID, activeTab]);
+
+  // Effect to handle notifications
+  useEffect(() => {
     if (notifications && notifications.length > 0) {
       console.log('Setting system notifications from props:', notifications);
       setSystemNotifications(notifications);
@@ -180,52 +277,15 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     }
   }, [notifications]);
 
+  // Effect to initialize chat state
   useEffect(() => {
-    console.log('Dashboard useEffect - cachedData:', cachedData);
-    
-    if (cachedData) {
-      // Use the data structure from Index.tsx which has already processed the recommendation cards
-      if (cachedData.recommendations) {
-        console.log('Setting recommendations from cache:', cachedData.recommendations);
-        setRecommendations(cachedData.recommendations);
-      }
-      if (cachedData.matches) {
-        console.log('Setting matches from cache:', cachedData.matches);
-        setMatches(cachedData.matches);
-      }
-      if (cachedData.awaiting) {
-        console.log('Setting awaiting from cache:', cachedData.awaiting);
-        setAwaiting(cachedData.awaiting);
-      }
-      if (cachedData.notifications) {
-        console.log('Setting notifications from cache:', cachedData.notifications);
-        setNotificationUsers(cachedData.notifications);
-      }
-    }
-    
-    setIsLoading(false);
-  }, [cachedData]);
-
-  useEffect(() => {
-    // Initialize chat state
-    console.log('Dashboard - Initializing chat state');
-    // Only check session storage if we have a userUID
     if (userUID) {
       const chatDismissed = sessionStorage.getItem('destinyChatDismissed');
       const chatCompleted = sessionStorage.getItem('destinyChatCompleted');
       
-      console.log('Dashboard - Chat state from session:', {
-        chatDismissed,
-        chatCompleted,
-        userUID
-      });
-      
-      // Only disable chat if explicitly dismissed or completed
       if (chatDismissed === 'true' || chatCompleted === 'true') {
-        console.log('Dashboard - Chat disabled by session state');
         setShowChat(false);
       } else {
-        console.log('Dashboard - Enabling chat');
         setShowChat(true);
       }
     }
@@ -244,14 +304,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
 
   const handleNotificationsOpen = () => {
     setIsNotificationsOpen(true);
-    setHasNewNotifications(false); // Reset new notifications indicator when popover is opened
+    setHasNewNotifications(false);
   };
 
   const handleLogout = () => {
     if (onLogout) {
       onLogout();
     } else {
-      // Fallback to old behavior
       localStorage.removeItem('userUID');
       localStorage.removeItem('userData');
       localStorage.removeItem('profileData');
@@ -264,7 +323,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     navigate("/profile");
   };
 
-  const handleUserClick = (user: UserType) => {
+  const handleUserClick = (user: RecommendationCard) => {
     setSelectedUser(user);
   };
 
@@ -273,12 +332,14 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
   };
 
   const handleActionComplete = (action: 'skip' | 'align', queue?: string, message?: string) => {
-    // Remove user from current list first
-    const userUID = selectedUser.uid;
-    setRecommendations(prev => prev.filter(user => user.uid !== userUID));
-    setMatches(prev => prev.filter(user => user.uid !== userUID));
-    setNotificationUsers(prev => prev.filter(user => user.uid !== userUID));
-    setAwaiting(prev => prev.filter(user => user.uid !== userUID));
+    if (!selectedUser) return;
+
+    const userUID = selectedUser.recommendation_uid;
+    
+    // Remove user from current list
+    setRecommendations(prev => prev.filter(user => user.recommendation_uid !== userUID));
+    setMatches(prev => prev.filter(user => user.recommendation_uid !== userUID));
+    setAwaiting(prev => prev.filter(user => user.recommendation_uid !== userUID));
 
     // Add message to notifications if present
     if (message && message !== 'None') {
@@ -287,28 +348,23 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
 
     // Handle queue management
     if (queue && queue !== 'None') {
+      const updatedUser = {
+        ...selectedUser,
+        user_align: action === 'align'
+      };
+
       switch (queue) {
         case 'MATCHED':
         case 'Matched':
-          // Move to matches queue
-          setMatches(prev => [...prev.filter(u => u.uid !== userUID), selectedUser]);
-          console.log(`Moving user ${selectedUser.name} to matches queue`);
+          setMatches(prev => [...prev.filter(u => u.recommendation_uid !== userUID), updatedUser]);
           break;
         case 'AWAITING':
         case 'Awaiting':
-          // Move to awaiting queue
-          setAwaiting(prev => [...prev.filter(u => u.uid !== userUID), selectedUser]);
-          console.log(`Moving user ${selectedUser.name} to awaiting queue`);
-          break;
-        default:
-          console.log(`Unknown queue type: ${queue}, removing user from all queues`);
+          setAwaiting(prev => [...prev.filter(u => u.recommendation_uid !== userUID), updatedUser]);
           break;
       }
-    } else {
-      console.log(`Queue is None, removing user from all queues`);
     }
 
-    // Close the profile view
     setSelectedUser(null);
   };
 
@@ -327,20 +383,21 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     }
   };
 
-  // Calculate total notification count - only system notifications and messages, not user notifications
   const totalNotificationCount = messages.length + systemNotifications.length;
 
-  console.log('Dashboard render - Current systemNotifications:', systemNotifications);
-  console.log('Dashboard render - Current systemNotifications length:', systemNotifications.length);
-  console.log('Dashboard render - Current messages:', messages);
-  console.log('Dashboard render - Total notification count:', totalNotificationCount);
-
-  const UserCard = React.forwardRef<HTMLDivElement, { user: UserType }>(({ user }, ref) => {
+  const UserCard = React.forwardRef<HTMLDivElement, { user: RecommendationCard }>(({ user }, ref) => {
     const [isLoading, setIsLoading] = useState(false);
     const [showPhotos, setShowPhotos] = useState(false);
+    const [profileImage, setProfileImage] = useState<string | null>(null);
+
+    // Set profile image when user data changes
+    useEffect(() => {
+      if (user.images && user.images.length > 0) {
+        setProfileImage(user.images[0]); // Use the first image URL directly
+      }
+    }, [user.images]);
 
     const handleCardClick = (e: React.MouseEvent) => {
-      // Only open dialog if the click is on the card background, not on a button
       if ((e.target as HTMLElement).closest('button')) return;
       setShowPhotos(true);
     };
@@ -350,81 +407,61 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
       
       setIsLoading(true);
       try {
-        const formData = new FormData();
         const metadata = {
-          uid: userUID,                    // current user's UID
-          action: actionType,              // 'align' or 'skip'
-          recommendation_uid: user.uid     // the uid of the card being acted upon
+          uid: userUID,
+          action: actionType,
+          recommendation_uid: user.recommendation_uid
         };
-
-        formData.delete('metadata');
-        formData.append('metadata', JSON.stringify(metadata));
 
         const response = await fetch(`${config.URL}/account:action`, {
           method: 'POST',
-          body: formData
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify(metadata)
         });
 
         if (response.ok) {
           const data = await response.json();
           
           if (data.error === 'OK') {
-            // Handle queue management based on response
             const queue = data.queue;
             const message = data.message;
-            const userAlign = data.user_align;
 
-            // Add notification if message exists
             if (message && message !== 'None') {
               addMessage(message, user.name);
             }
 
-            // First remove user from recommendations
-            setRecommendations(prev => prev.filter(u => u.uid !== user.uid));
+            // Remove user from all queues first
+            setRecommendations(prev => prev.filter(u => u.recommendation_uid !== user.recommendation_uid));
+            setMatches(prev => prev.filter(u => u.recommendation_uid !== user.recommendation_uid));
+            setAwaiting(prev => prev.filter(u => u.recommendation_uid !== user.recommendation_uid));
 
-            // Then handle queue management
+            // If action is skip, we don't need to add to any queue
+            if (actionType === 'skip') {
+              return;
+            }
+
+            // Only add to new queue if it's an align action and we have a queue
             if (queue && queue !== 'None') {
-              // Create updated user object with user_align
               const updatedUser = {
                 ...user,
-                user_align: userAlign
+                user_align: actionType === 'align'
               };
 
-              // Remove user from all queues first
-              setMatches(prev => prev.filter(u => u.uid !== user.uid));
-              setNotificationUsers(prev => prev.filter(u => u.uid !== user.uid));
-              setAwaiting(prev => prev.filter(u => u.uid !== user.uid));
-
-              // Then add to the appropriate queue
               switch (queue) {
                 case 'MATCHED':
                 case 'Matched':
-                  // Move to matches queue
                   setMatches(prev => [...prev, updatedUser]);
-                  console.log(`Moving user ${user.name} to matches queue`);
                   break;
                 case 'AWAITING':
                 case 'Awaiting':
-                  // Move to awaiting queue
                   setAwaiting(prev => [...prev, updatedUser]);
-                  console.log(`Moving user ${user.name} to awaiting queue`);
-                  break;
-                default:
-                  console.log(`Unknown queue type: ${queue}, user removed from all queues`);
                   break;
               }
-            } else {
-              console.log(`Queue is None, removing user from all queues`);
-              // Remove from all queues if no specific queue is specified
-              setMatches(prev => prev.filter(u => u.uid !== user.uid));
-              setNotificationUsers(prev => prev.filter(u => u.uid !== user.uid));
-              setAwaiting(prev => prev.filter(u => u.uid !== user.uid));
             }
-          } else {
-            console.error('API error:', data.error);
           }
-        } else {
-          throw new Error('Network response was not ok');
         }
       } catch (error) {
         console.error('Action error:', error);
@@ -447,59 +484,51 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
             <CardContent className="p-6" onClick={handleCardClick}>
               <div className="flex items-center space-x-4 mb-4">
                 <Avatar className="w-16 h-16 ring-2 ring-white/20">
-                  <AvatarImage src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} />
-                  <AvatarFallback className="bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xl font-bold">
-                    {user.name?.charAt(0) || <User className="w-8 h-8" />}
-                  </AvatarFallback>
+                  {profileImage ? (
+                    <AvatarImage src={profileImage} />
+                  ) : (
+                    <AvatarFallback className="bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xl font-bold">
+                      {user.name?.charAt(0) || <User className="w-8 h-8" />}
+                    </AvatarFallback>
+                  )}
                 </Avatar>
                 <div>
                   <h3 className="text-lg font-semibold text-white">{user.name}</h3>
-                  {user.age && (
-                    <p className="text-white/70">{user.age} years old</p>
-                  )}
-                  {user.city && user.country && (
-                    <p className="text-white/70">📍 {user.city}, {user.country}</p>
-                  )}
-                  {user.kundliScore !== undefined && (
+                  {user.score !== undefined && (
                     <div className="flex items-center mt-1">
                       <Star className="w-4 h-4 text-yellow-400 mr-1" />
                       <span className="text-sm text-white/70 font-medium">
-                        Compatibility: {user.kundliScore}/10
+                        Compatibility: {user.score}/10
+                      </span>
+                    </div>
+                  )}
+                  {user.city && user.country && (
+                    <div className="flex items-center mt-1">
+                      <MapPin className="w-4 h-4 text-white/60 mr-1" />
+                      <span className="text-sm text-white/60">
+                        {user.city}, {user.country}
+                      </span>
+                    </div>
+                  )}
+                  {user.hobbies && (
+                    <div className="mt-1">
+                      <span className="text-sm text-white/60">
+                        {user.hobbies.split(',').slice(0, 2).join(', ')}
+                        {user.hobbies.split(',').length > 2 ? '...' : ''}
                       </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2 mb-4">
-                {user.hobbies && (
-                  typeof user.hobbies === 'string' ? (
-                    user.hobbies.split(',').map((hobby, index) => (
-                      <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
-                        {hobby.trim()}
-                      </Badge>
-                    ))
-                  ) : (
-                    user.hobbies.map((hobby, index) => (
-                      <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20">
-                        {hobby}
-                      </Badge>
-                    ))
-                  )
-                )}
-              </div>
-
               <div className="flex justify-center items-center gap-6 mt-6">
-                {/* Align Button or Waiting Clock */}
                 <div className="relative group">
                   <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
                   {user.user_align ? (
-                    // Show waiting clock icon if user_align is true
                     <div className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 flex items-center justify-center">
                       <Clock className="w-4 h-4 text-emerald-300" />
                     </div>
                   ) : (
-                    // Show align button if user_align is false
                     <Button
                       onClick={e => { e.stopPropagation(); handleAction('align'); }}
                       variant="outline"
@@ -515,7 +544,6 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                   </span>
                 </div>
 
-                {/* Skip Button */}
                 <div className="relative group">
                   <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
                   <Button
@@ -538,6 +566,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
 
         <Dialog open={showPhotos} onOpenChange={setShowPhotos}>
           <DialogContent className="max-w-lg bg-purple-950/30 backdrop-blur-xl border-white/20 [&>button]:hidden">
+            <DialogTitle className="sr-only">User Profile Photos</DialogTitle>
             <div className="absolute right-4 top-4">
               <Button
                 variant="ghost"
@@ -550,70 +579,68 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               </Button>
             </div>
             <div className="flex flex-col gap-6 pt-4">
-              {/* User Info Section */}
               <div className="flex items-start gap-4">
                 <Avatar className="w-20 h-20 ring-2 ring-white/20">
-                  <AvatarImage src={user.profilePicture || (user.images && user.images.length > 0 ? user.images[0] : undefined)} />
-                  <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-500 text-white font-semibold text-xl">
-                    {user.name?.charAt(0) || <User className="w-8 h-8" />}
-                  </AvatarFallback>
+                  {profileImage ? (
+                    <AvatarImage src={profileImage} />
+                  ) : (
+                    <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-500 text-white font-semibold text-xl">
+                      {user.name?.charAt(0) || <User className="w-8 h-8" />}
+                    </AvatarFallback>
+                  )}
                 </Avatar>
                 <div className="flex-1">
                   <h2 className="text-xl font-bold text-white mb-2">{user.name}</h2>
+                  {user.score !== undefined && (
+                    <p className="text-white/80 flex items-center gap-2 mb-2 text-sm">
+                      <Star className="w-4 h-4 text-yellow-400" />
+                      Compatibility: {user.score}/10
+                    </p>
+                  )}
                   {user.city && user.country && (
                     <p className="text-white/80 flex items-center gap-2 mb-2 text-sm">
                       <MapPin className="w-4 h-4" />
                       {user.city}, {user.country}
                     </p>
                   )}
-                  {user.kundliScore !== undefined && (
-                    <p className="text-white/80 flex items-center gap-2 mb-2 text-sm">
-                      <Star className="w-4 h-4 text-yellow-400" />
-                      Compatibility: {user.kundliScore}/10
-                    </p>
-                  )}
-                  {user.hobbies && user.hobbies.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {(typeof user.hobbies === 'string' ? user.hobbies.split(',').map(h => h.trim()) : user.hobbies).map((hobby, index) => (
-                        <Badge key={`hobby-${user.uid}-${index}`} variant="secondary" className="bg-white/10 text-white/90 hover:bg-white/20 border border-white/20 text-xs">
-                          {hobby}
-                        </Badge>
-                      ))}
+                  {user.hobbies && (
+                    <div className="mb-2">
+                      <p className="text-white/80 text-sm font-medium mb-1">Hobbies</p>
+                      <div className="flex flex-wrap gap-2">
+                        {user.hobbies.split(',').map((hobby, index) => (
+                          <Badge 
+                            key={index}
+                            variant="secondary" 
+                            className="bg-white/10 text-white/80 border-white/20"
+                          >
+                            {hobby.trim()}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Photo Carousel */}
-              <div className="flex items-center justify-center">
-                <div className="relative w-full max-w-sm px-12">
-                  <Carousel className="w-full">
-                    <CarouselContent>
-                      {user.images?.map((image, index) => (
-                        <CarouselItem key={`image-${user.uid}-${index}`}>
-                          <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-white/5 backdrop-blur-xl border border-white/10 max-h-[400px]">
-                            <img
-                              src={image}
-                              alt={`Photo ${index + 1} of ${user.name}`}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                console.error('Failed to load image:', image);
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          </div>
-                        </CarouselItem>
-                      ))}
-                    </CarouselContent>
-                    {user.images && user.images.length > 1 && (
-                      <>
-                        <CarouselPrevious className="bg-white/10 backdrop-blur-xl border-white/20 text-white hover:bg-white/20 -left-12" />
-                        <CarouselNext className="bg-white/10 backdrop-blur-xl border-white/20 text-white hover:bg-white/20 -right-12" />
-                      </>
-                    )}
-                  </Carousel>
-                </div>
-              </div>
+              {user.images && user.images.length > 0 && (
+                <Carousel className="w-full max-w-md mx-auto px-12">
+                  <CarouselContent className="flex items-center">
+                    {user.images.map((image, index) => (
+                      <CarouselItem key={index} className="flex items-center justify-center">
+                        <div className="relative aspect-square rounded-xl overflow-hidden max-h-[300px] w-full">
+                          <img
+                            src={image}
+                            alt={`${user.name}'s photo ${index + 1}`}
+                            className="object-cover w-full h-full"
+                          />
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="absolute left-0 top-1/2 -translate-y-1/2 bg-white/10 backdrop-blur-xl border-white/20 text-white hover:bg-white/20 hover:border-white/30" />
+                  <CarouselNext className="absolute right-0 top-1/2 -translate-y-1/2 bg-white/10 backdrop-blur-xl border-white/20 text-white hover:bg-white/20 hover:border-white/30" />
+                </Carousel>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -644,9 +671,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="max-w-4xl mx-auto px-6 py-8">
-          <ProfileView user={selectedUser} onBack={handleBackToList}>
+          <ProfileView user={selectedUser as unknown as UserType} onBack={handleBackToList}>
             <UserActions 
-              userUID={selectedUser.uid} 
+              userUID={selectedUser.recommendation_uid} 
               currentUserUID={userUID}
               onActionComplete={handleActionComplete}
             />
@@ -656,33 +683,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
     );
   }
 
-  if (isLoadingData && (!cachedData || Object.keys(cachedData).length === 0)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="text-center">
-          <div className="relative w-16 h-16 mx-auto mb-6">
-            <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-lg opacity-50"></div>
-            <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
-            </div>
-          </div>
-          <p className="text-white/70 font-medium">Discovering your perfect matches...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Add debug logging for render
-  console.log('Dashboard - Rendering with state:', {
-    showChat,
-    userUID,
-    isLoadingData,
-    hasCachedData: !!cachedData
-  });
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Modern Header - Mobile Optimized */}
+      {/* Header */}
       <div className="border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between">
           <div className="flex items-center space-x-2 sm:space-x-4">
@@ -718,7 +721,6 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                 </div>
                 <div className="max-h-96 overflow-y-auto p-4">
                   <div className="space-y-3">
-                    {/* Show system notifications from login response */}
                     {systemNotifications.length > 0 && systemNotifications.map((notification, index) => (
                       <div key={`system-${index}`} className="p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-white/10">
                         <p className="text-white text-sm">{notification.message}</p>
@@ -728,7 +730,6 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                       </div>
                     ))}
                     
-                    {/* Show messages from user actions */}
                     {messages.length > 0 && messages.map((message) => (
                       <div key={`message-${message.id}`} className="p-3 rounded-lg bg-white/5 border border-white/10">
                         <p className="text-white text-sm">{message.text}</p>
@@ -741,7 +742,6 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                       </div>
                     ))}
                     
-                    {/* Show empty state if no notifications */}
                     {systemNotifications.length === 0 && messages.length === 0 && (
                       <div className="text-center py-8">
                         <Bell className="w-8 h-8 text-white/40 mx-auto mb-2" />
@@ -767,7 +767,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <Tabs defaultValue="recommendations" className="space-y-6 sm:space-y-8">
+        <Tabs defaultValue="recommendations" className="space-y-6 sm:space-y-8" onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
             <TabsTrigger 
               value="recommendations" 
@@ -776,7 +776,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Discover</span>
               <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {isLoadingData ? (
+                {isLoading.recommendations ? (
                   <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   recommendations.length
@@ -790,7 +790,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <Clock className="w-4 h-4" />
               <span className="hidden sm:inline">Awaiting</span>
               <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {isLoadingData ? (
+                {isLoading.awaiting ? (
                   <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   awaiting.length
@@ -804,7 +804,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
               <Heart className="w-4 h-4" />
               <span className="hidden sm:inline">Matches</span>
               <Badge variant="secondary" className="bg-white/20 text-white/80 text-xs">
-                {isLoadingData ? (
+                {isLoading.matches ? (
                   <div className="w-4 h-4 border-2 border-white/40 border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   matches.length
@@ -832,12 +832,24 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                 </div>
               </CardHeader>
               <CardContent className="p-6">
-                {recommendations.length > 0 ? (
+                {isLoading.recommendations ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="text-center">
+                      <div className="relative w-16 h-16 mx-auto mb-6">
+                        <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-lg opacity-50"></div>
+                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                        </div>
+                      </div>
+                      <p className="text-white/70 font-medium">Discovering your perfect matches...</p>
+                    </div>
+                  </div>
+                ) : recommendations.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       {recommendations.map((user) => (
                         <UserCard 
-                          key={`recommendation-${user.uid}`} 
+                          key={`recommendation-${user.recommendation_uid}`} 
                           user={user} 
                         />
                       ))}
@@ -873,11 +885,23 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                 </div>
               </CardHeader>
               <CardContent className="p-6">
-                {awaiting.length > 0 ? (
+                {isLoading.awaiting ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="text-center">
+                      <div className="relative w-16 h-16 mx-auto mb-6">
+                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full blur-lg opacity-50"></div>
+                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                        </div>
+                      </div>
+                      <p className="text-white/70 font-medium">Loading awaiting responses...</p>
+                    </div>
+                  </div>
+                ) : awaiting.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       {awaiting.map((user) => (
-                        <UserCard key={`awaiting-${user.uid}`} user={user} />
+                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -911,11 +935,23 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, cachedData, isLoadingData
                 </div>
               </CardHeader>
               <CardContent className="p-6">
-                {matches.length > 0 ? (
+                {isLoading.matches ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="text-center">
+                      <div className="relative w-16 h-16 mx-auto mb-6">
+                        <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-red-500 rounded-full blur-lg opacity-50"></div>
+                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                        </div>
+                      </div>
+                      <p className="text-white/70 font-medium">Loading your matches...</p>
+                    </div>
+                  </div>
+                ) : matches.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       {matches.map((user) => (
-                        <UserCard key={`match-${user.uid}`} user={user} />
+                        <UserCard key={`match-${user.recommendation_uid}`} user={user} />
                       ))}
                     </AnimatePresence>
                   </div>
