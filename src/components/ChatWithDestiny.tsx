@@ -73,13 +73,9 @@ const ChatWithDestiny = ({ userUID, onClose }: ChatWithDestinyProps) => {
   useEffect(() => {
     // Scroll to bottom when new messages arrive
     if (chatHistoryRef.current) {
-      const scrollOptions = {
-        top: chatHistoryRef.current.scrollHeight,
-        behavior: 'smooth' as const
-      };
-      chatHistoryRef.current.scrollTo(scrollOptions);
+      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
+  }, [messages]);
 
   const handlePopupClose = () => {
     console.log('ChatWithDestiny - Popup closed by user');
