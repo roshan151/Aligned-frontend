@@ -17,6 +17,7 @@ import {
   Star,
   Sparkles
 } from "lucide-react";
+import { getSignedS3Url, extractS3Key } from "@/lib/utils";
 
 interface ProfileData {
   uid: string;
@@ -44,12 +45,14 @@ interface ProfileProps {
 const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) => {
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [signedImageUrls, setSignedImageUrls] = useState<string[]>([]);
 
   useEffect(() => {
     // Use cached data if available
     if (cachedProfileData) {
       console.log('Using cached profile data:', cachedProfileData);
       setProfileData(cachedProfileData);
+      processImages(cachedProfileData.images || []);
       setIsLoading(false);
       return;
     }
@@ -61,6 +64,7 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
         const parsedData = JSON.parse(storedProfileData);
         console.log('Using stored profile data:', parsedData);
         setProfileData(parsedData);
+        processImages(parsedData.images || []);
       } catch (error) {
         console.error('Error parsing stored profile data:', error);
       }
@@ -68,6 +72,23 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
     
     setIsLoading(false);
   }, [cachedProfileData]);
+
+  const processImages = async (images: string[]) => {
+    if (!images || images.length === 0) return;
+
+    const signedUrls = await Promise.all(
+      images.map(async (url) => {
+        const key = extractS3Key(url);
+        if (key) {
+          const signedUrl = await getSignedS3Url(key);
+          return signedUrl || url; // Fallback to original URL if signed URL generation fails
+        }
+        return url;
+      })
+    );
+
+    setSignedImageUrls(signedUrls);
+  };
 
   // Show loading if we're explicitly loading profile data
   if (isLoadingProfile || isLoading) {
@@ -147,7 +168,7 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                 <div className="absolute -inset-2 bg-gradient-to-r from-violet-400 to-purple-400 rounded-full blur opacity-20"></div>
                 <Avatar className="relative w-36 h-36 md:w-44 md:h-44 ring-4 ring-white/30 shadow-2xl transform group-hover:scale-105 transition-all duration-500">
                   <AvatarImage 
-                    src={profileData?.images?.[0]} 
+                    src={signedImageUrls[0] || profileData?.images?.[0]} 
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 text-white text-4xl font-bold">
@@ -332,7 +353,7 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
               <CardContent>
                 {profileData?.images && profileData.images.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                    {profileData.images.map((image, index) => {
+                    {signedImageUrls.map((image, index) => {
                       if (!image || image.length === 0) return null;
                       
                       return (
