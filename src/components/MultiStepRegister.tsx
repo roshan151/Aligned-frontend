@@ -87,12 +87,12 @@ const MultiStepRegister = () => {
     
     setEmailChecking(true);
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('metadata', JSON.stringify({ email }));
-
       const response = await fetch(`${config.URL}${config.ENDPOINTS.VERIFY_EMAIL}`, {
         method: 'POST',
-        body: formDataToSend,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
       });
 
       const data = await response.json();

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Heart, X } from "lucide-react";
@@ -18,17 +17,18 @@ const UserActions = ({ userUID, currentUserUID, onActionComplete }: UserActionsP
     
     setIsLoading(true);
     try {
-      const formData = new FormData();
       const metadata = {
         uid: currentUserUID,
         action: actionType,
         recommendation_uid: userUID
       };
-      formData.append('metadata', JSON.stringify(metadata));
 
       const response = await fetch(`${config.URL}/account:action`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(metadata),
       });
 
       if (response.ok) {

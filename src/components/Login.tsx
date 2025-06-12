@@ -67,14 +67,16 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
     try {
       console.log('Attempting login with email:', email);
       
-      const formData = new FormData();
-      formData.append('metadata', JSON.stringify({ email, password }));
-
+      const loginPayload = { email, password };
+      
       console.log('Sending login request to:', `${config.URL}/account:login`);
       
       const response = await fetch(`${config.URL}/account:login`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(loginPayload),
       });
 
       console.log('Login response status:', response.status);
@@ -90,27 +92,16 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
         sessionStorage.removeItem('destinyChatDismissed');
         sessionStorage.removeItem('destinyChatCompleted');
         
-        // Store the complete login response data including profile and recommendation cards
-        const loginData = {
+        // Store only UID and notifications from login response
+        const minimalLoginData = {
           uid: data.UID,
-          name: data.NAME,
-          dob: data.DOB,
-          city: data.CITY,
-          country: data.COUNTRY,
-          images: data.IMAGES,
-          hobbies: data.HOBBIES,
-          profession: data.PROFESSION,
-          gender: data.GENDER,
-          email: email,
-          recommendationCards: data.RECOMMENDATION_CARDS || [],
-          notifications: data.NOTIFICATIONS || [],
-          message: data.MESSAGE
+          notifications: data.NOTIFICATIONS || []
         };
         
-        console.log('Storing complete login data:', loginData);
+        console.log('Storing minimal login data:', minimalLoginData);
         
-        // Use the new onSuccessfulLogin handler with the complete data
-        await onSuccessfulLogin(data.UID, loginData);
+        // Use the onSuccessfulLogin handler with minimal data
+        await onSuccessfulLogin(data.UID, minimalLoginData);
         
       } else {
         console.error('Login failed:', data);

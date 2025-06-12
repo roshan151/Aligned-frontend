@@ -127,15 +127,14 @@ const ChatWithDestiny = ({ userUID, onClose }: ChatWithDestinyProps) => {
         role: "user"
       };
 
-      // Create FormData
-      const formData = new FormData();
-      formData.append('metadata', JSON.stringify(metadata));
-
       console.log('Sending chat request with data:', metadata);
 
       const response = await fetch(`${config.URL}/chat:continue`, {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(metadata),
       });
 
       console.log('Response status:', response.status);
@@ -186,7 +185,6 @@ const ChatWithDestiny = ({ userUID, onClose }: ChatWithDestinyProps) => {
   const handleChatClose = async () => {
     console.log('ChatWithDestiny - Chat closed by user');
     try {
-      const formData = new FormData();
       const metadata = {
         uid: userUID,
         user_input: "exit",
@@ -195,11 +193,12 @@ const ChatWithDestiny = ({ userUID, onClose }: ChatWithDestinyProps) => {
           role: msg.isUser ? "user" : "assistant"
         }))
       };
-      formData.append('metadata', JSON.stringify(metadata));
-
       await fetch(`${config.URL}/chat:continue`, {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(metadata),
       });
     } catch (error) {
       console.error('Error ending chat:', error);
