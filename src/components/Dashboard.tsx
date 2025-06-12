@@ -249,10 +249,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   // Effect to initialize chat state
   useEffect(() => {
     if (userUID) {
-      const chatDismissed = sessionStorage.getItem('destinyChatDismissed');
       const chatCompleted = sessionStorage.getItem('destinyChatCompleted');
       
-      if (chatDismissed === 'true' || chatCompleted === 'true') {
+      if (chatCompleted === 'true') {
         setShowChat(false);
       } else {
         setShowChat(true);
