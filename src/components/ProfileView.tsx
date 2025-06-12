@@ -4,24 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { User, MapPin, Calendar, ArrowLeft, Camera, Star } from "lucide-react";
-
-interface User {
-  uid: string;
-  name: string;
-  email?: string;
-  city?: string;
-  country?: string;
-  age?: number;
-  gender?: string;
-  hobbies?: string | string[];
-  profilePicture?: string;
-  bio?: string;
-  images?: string[];
-  kundliScore?: number;
-}
+import { User as UserType } from "../types";
 
 interface ProfileViewProps {
-  user: User;
+  user: UserType;
   onBack: () => void;
   children?: React.ReactNode;
 }
