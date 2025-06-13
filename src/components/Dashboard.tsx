@@ -19,6 +19,7 @@ import { User as UserType, Notification } from "../types";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { getSignedS3Url, extractS3Key } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 interface DashboardMessage {
   id: string;
@@ -63,9 +64,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [systemNotifications, setSystemNotifications] = useState<Notification[]>([]);
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
-  const [showChat, setShowChat] = useState(true);
+  const [showChat, setShowChat] = useState(false);
+  const [showChatWindow, setShowChatWindow] = useState(false);
   const [activeTab, setActiveTab] = useState("recommendations");
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set());
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatHistory, setChatHistory] = useState<any[]>([]);
 
   // Fetch profile data for a recommendation card
   const fetchProfileData = async (uid: string) => {
@@ -246,16 +250,44 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     }
   }, [notifications]);
 
-  // Effect to initialize chat state
+  // Effect to initialize chat with destiny after a delay
   useEffect(() => {
-    if (userUID) {
-      const chatCompleted = sessionStorage.getItem('destinyChatCompleted');
+    // Check if user has dismissed or completed the chat
+    const hasDismissed = sessionStorage.getItem('destinyChatDismissed');
+    const hasCompleted = sessionStorage.getItem('destinyChatCompleted');
+    
+    if (!hasDismissed && !hasCompleted && userUID) {
+      console.log('Setting up chat timer with UID:', userUID);
+      // Generate random delay between 20 and 70 seconds
+      const randomDelay = Math.floor(Math.random() * (70000 - 20000) + 20000);
+      console.log(`Chat will appear in ${randomDelay/1000} seconds`);
       
-      if (chatCompleted === 'true') {
-        setShowChat(false);
-      } else {
-        setShowChat(true);
-      }
+      const timer = setTimeout(async () => {
+        try {
+          console.log('Making chat:initiate call for UID:', userUID);
+          const response = await fetch(`https://lovebhagya.com/chat:initiate/${userUID}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Origin': 'http://localhost:8080'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log('Chat initiated successfully:', data);
+            setChatMessage(data.message);
+            setChatHistory(data.history || []);
+            setShowChat(true);
+          } else {
+            console.error('Failed to initiate chat:', response.status);
+          }
+        } catch (error) {
+          console.error('Error initiating chat:', error);
+        }
+      }, randomDelay);
+
+      return () => clearTimeout(timer);
     }
   }, [userUID]);
 
@@ -635,6 +667,46 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     </div>
   );
 
+  const handleChatResponse = async (userInput: string) => {
+    try {
+      const response = await fetch('https://lovebhagya.com/chat:continue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': 'http://localhost:8080'
+        },
+        body: JSON.stringify({
+          uid: userUID,
+          user_input: userInput,
+          history: chatHistory
+        })
+      });
+
+      if (response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          setChatMessage(data.message);
+          setChatHistory(data.history || []);
+          
+          // Check if chat should end
+          if (!data.continue) {
+            // Show final message for 2 seconds then close
+            setTimeout(() => {
+              setShowChat(false);
+              sessionStorage.setItem('destinyChatCompleted', 'true');
+            }, 2000);
+          }
+        } else {
+          console.error('Expected JSON response but got:', contentType);
+        }
+      }
+    } catch (error) {
+      console.error('Error continuing chat:', error);
+    }
+  };
+
   if (selectedUser) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -916,14 +988,75 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       </div>
 
       {showChat && userUID && (
-        <ChatWithDestiny 
-          userUID={userUID}
-          onClose={() => {
-            console.log('Dashboard - Chat closed by user');
-            setShowChat(false);
-          }}
-        />
+        <div className="fixed bottom-6 right-6 z-50">
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="bg-white rounded-lg shadow-xl w-80 sm:w-96 mb-4 border border-indigo-100"
+          >
+            <div className="p-4 border-b flex justify-between items-center bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-t-lg">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <span className="text-lg font-['Lavanderia']">D</span>
+                </div>
+                <h3 className="font-['Lavanderia'] text-2xl">Destiny</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setShowChat(false);
+                  sessionStorage.setItem('destinyChatDismissed', 'true');
+                }}
+                className="h-8 w-8 hover:bg-indigo-500/20 text-white"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <div className="bg-indigo-50 rounded-lg p-3 mb-4">
+                <p className="text-gray-700 text-sm">{chatMessage}</p>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Type your response..."
+                  className="flex-1 text-sm border-indigo-100 focus:border-indigo-300 text-gray-900 placeholder:text-gray-500"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleChatResponse(e.currentTarget.value);
+                      e.currentTarget.value = '';
+                    }
+                  }}
+                />
+                <Button
+                  onClick={() => {
+                    const input = document.querySelector('input');
+                    if (input) {
+                      handleChatResponse(input.value);
+                      input.value = '';
+                    }
+                  }}
+                  className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-4"
+                >
+                  Send
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
       )}
+
+      <div className="fixed bottom-6 right-6 z-40">
+        <ChatWithDestiny 
+          userUID={userUID} 
+          onClose={() => {
+            setShowChatWindow(false);
+          }}
+          showChatWindow={showChatWindow}
+        />
+      </div>
     </div>
   );
 };
