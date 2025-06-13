@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ChatWithDestiny from "./ChatWithDestiny";
 import React from "react";
 import { User as UserType, Notification } from "../types";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { getSignedS3Url, extractS3Key } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,17 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set());
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [isWaitingForUser, setIsWaitingForUser] = useState(false);
+  const [isInitialResponse, setIsInitialResponse] = useState(false);
+  const [isPreferenceChat, setIsPreferenceChat] = useState(false);
+  const chatHistoryRef = useRef<HTMLDivElement>(null);
+
+  // Effect to scroll to bottom when chat history changes
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+    }
+  }, [chatHistory]);
 
   // Fetch profile data for a recommendation card
   const fetchProfileData = async (uid: string) => {
@@ -272,13 +283,15 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               'Origin': 'http://localhost:8080'
             }
           });
-
+          
           if (response.ok) {
             const data = await response.json();
             console.log('Chat initiated successfully:', data);
             setChatMessage(data.message);
-            setChatHistory(data.history || []);
+            // Initialize chat history with the first message
+            setChatHistory([{ text: data.message, isUser: false }]);
             setShowChat(true);
+            setIsInitialResponse(true);
           } else {
             console.error('Failed to initiate chat:', response.status);
           }
@@ -286,7 +299,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           console.error('Error initiating chat:', error);
         }
       }, randomDelay);
-
+      
       return () => clearTimeout(timer);
     }
   }, [userUID]);
@@ -567,6 +580,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         <Dialog open={showPhotos} onOpenChange={setShowPhotos}>
           <DialogContent className="max-w-lg bg-purple-950/30 backdrop-blur-xl border-white/20 [&>button]:hidden">
             <DialogTitle className="sr-only">User Profile Photos</DialogTitle>
+            <DialogDescription className="sr-only">
+              View and browse through user's profile photos
+            </DialogDescription>
             <div className="absolute right-4 top-4">
               <Button
                 variant="ghost"
@@ -667,9 +683,49 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     </div>
   );
 
-  const handleChatResponse = async (userInput: string) => {
+  const handlePreferenceChat = async () => {
+    if (!userUID) return;
+    
     try {
-      const response = await fetch('https://lovebhagya.com/chat:continue', {
+      const response = await fetch('https://lovebhagya.com/chat/preference:continue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': 'http://localhost:8080'
+        },
+        body: JSON.stringify({
+          uid: userUID
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Preference chat initiated successfully:', data);
+        setChatMessage(data.message);
+        setChatHistory(data.history || []);
+        setShowChat(true);
+        setIsPreferenceChat(true);
+      } else {
+        console.error('Failed to initiate preference chat:', response.status);
+      }
+    } catch (error) {
+      console.error('Error initiating preference chat:', error);
+    }
+  };
+
+  const handleChatResponse = async (userInput: string) => {
+    if (!userUID) return;
+    
+    try {
+      let endpoint = 'chat/initiate:continue';
+      if (isPreferenceChat) {
+        endpoint = 'chat/preference:continue';
+      } else if (isInitialResponse) {
+        endpoint = 'chat/initiate:continue';
+      }
+      
+      const response = await fetch(`https://lovebhagya.com/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -688,10 +744,18 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
           setChatMessage(data.message);
-          setChatHistory(data.history || []);
+          // Add user message and response to chat history
+          setChatHistory(prevHistory => [
+            ...prevHistory,
+            { text: userInput, isUser: true },
+            { text: data.message, isUser: false }
+          ]);
+          setIsInitialResponse(false);
           
-          // Check if chat should end
-          if (!data.continue) {
+          if (data.continue) {
+            setIsWaitingForUser(true);
+            // Don't automatically continue - wait for user to click send
+          } else {
             // Show final message for 2 seconds then close
             setTimeout(() => {
               setShowChat(false);
@@ -707,10 +771,43 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     }
   };
 
+  const handleChatExit = async () => {
+    if (userUID) {
+      try {
+        // Determine if this is a preference chat by checking if the chat was initiated by preference button
+        const isPreferenceChatExit = showChatWindow;
+        const endpoint = isPreferenceChatExit ? 'chat/preference:continue' : 'chat/initiate:continue';
+        
+        const response = await fetch(`https://lovebhagya.com/${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Origin': 'http://localhost:8080'
+          },
+          body: JSON.stringify({
+            uid: userUID,
+            user_input: "exit",
+            history: chatHistory
+          })
+        });
+        
+        if (response.ok) {
+          console.log('Chat exit handled successfully');
+        }
+      } catch (error) {
+        console.error('Error handling chat exit:', error);
+      }
+    }
+    setShowChat(false);
+    setShowChatWindow(false);
+    sessionStorage.setItem('destinyChatDismissed', 'true');
+  };
+
   if (selectedUser) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="max-w-4xl mx-auto px-6 py-8">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
+        <div className="container mx-auto px-4 py-8">
           <ProfileView user={selectedUser as unknown as UserType} onBack={handleBackToList}>
             <UserActions 
               userUID={selectedUser.recommendation_uid} 
@@ -724,338 +821,350 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Header */}
-      <div className="border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between">
-          <div className="flex items-center space-x-2 sm:space-x-4">
-            <h1 className="text-3xl sm:text-6xl font-bold text-white tracking-tight font-['Lavanderia']">Aligned</h1>
-          </div>
-          <div className="flex gap-2 sm:gap-3">
-            <Popover open={isNotificationsOpen} onOpenChange={(open) => {
-              setIsNotificationsOpen(open);
-              if (open) setHasNewNotifications(false);
-            }}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="relative border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
-                >
-                  <Bell className={`w-3 h-3 sm:w-4 sm:h-4 sm:mr-2 ${hasNewNotifications ? 'text-yellow-400 animate-pulse' : ''}`} />
-                  <span className="hidden sm:inline">Notifications</span>
-                  {totalNotificationCount > 0 && (
-                    <Badge className="ml-1 sm:ml-2 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center bg-red-500 text-white text-xs">
-                      {totalNotificationCount}
-                    </Badge>
-                  )}
-                  {hasNewNotifications && (
-                    <span className="absolute top-0 right-0 h-2 w-2 bg-yellow-400 rounded-full animate-ping"></span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0 bg-white/5 backdrop-blur-xl border border-white/10" align="end">
-                <div className="p-4 border-b border-white/10">
-                  <h3 className="font-semibold text-white text-lg">Notifications</h3>
-                  <p className="text-white/60 text-sm">Recent system updates</p>
-                </div>
-                <div className="max-h-96 overflow-y-auto p-4">
-                  <div className="space-y-3">
-                    {systemNotifications.length > 0 && systemNotifications.map((notification, index) => (
-                      <div key={`system-${index}`} className="p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-white/10">
-                        <p className="text-white text-sm">{notification.message}</p>
-                        <p className="text-white/40 text-xs mt-1">
-                          {formatNotificationDate(notification.updated)}
-                        </p>
-                      </div>
-                    ))}
-                    
-                    {messages.length > 0 && messages.map((message) => (
-                      <div key={`message-${message.id}`} className="p-3 rounded-lg bg-white/5 border border-white/10">
-                        <p className="text-white text-sm">{message.text}</p>
-                        {message.userName && (
-                          <p className="text-white/60 text-xs mt-1">From: {message.userName}</p>
-                        )}
-                        <p className="text-white/40 text-xs mt-1">
-                          {formatDistanceToNow(message.timestamp, { addSuffix: true })}
-                        </p>
-                      </div>
-                    ))}
-                    
-                    {systemNotifications.length === 0 && messages.length === 0 && (
-                      <div className="text-center py-8">
-                        <Bell className="w-8 h-8 text-white/40 mx-auto mb-2" />
-                        <p className="text-white/60 text-sm">No notifications yet</p>
-                        <p className="text-white/40 text-xs mt-1">System updates will appear here</p>
-                      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
+      <div className="w-full max-w-7xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between">
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              <h1 className="text-3xl sm:text-6xl font-bold text-white tracking-tight font-['Lavanderia']">Aligned</h1>
+            </div>
+            <div className="flex gap-2 sm:gap-3">
+              <Popover open={isNotificationsOpen} onOpenChange={(open) => {
+                setIsNotificationsOpen(open);
+                if (open) setHasNewNotifications(false);
+              }}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="relative border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
+                  >
+                    <Bell className={`w-3 h-3 sm:w-4 sm:h-4 sm:mr-2 ${hasNewNotifications ? 'text-yellow-400 animate-pulse' : ''}`} />
+                    <span className="hidden sm:inline">Notifications</span>
+                    {totalNotificationCount > 0 && (
+                      <Badge className="ml-1 sm:ml-2 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center bg-red-500 text-white text-xs">
+                        {totalNotificationCount}
+                      </Badge>
                     )}
+                    {hasNewNotifications && (
+                      <span className="absolute top-0 right-0 h-2 w-2 bg-yellow-400 rounded-full animate-ping"></span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0 bg-white/5 backdrop-blur-xl border border-white/10" align="end">
+                  <div className="p-4 border-b border-white/10">
+                    <h3 className="font-semibold text-white text-lg">Notifications</h3>
+                    <p className="text-white/60 text-sm">Recent system updates</p>
                   </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-            <Button 
-              onClick={handleViewProfile}
-              variant="outline"
-              size="sm"
-              className="border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
-            >
-              <User className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Profile</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <Tabs defaultValue="recommendations" className="space-y-6 sm:space-y-8" onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
-            <TabsTrigger 
-              value="recommendations" 
-              className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
-            >
-              <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">Discover</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="awaiting" 
-              className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
-            >
-              <Clock className="w-4 h-4" />
-              <span className="hidden sm:inline">Awaiting</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="matches" 
-              className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
-            >
-              <Heart className="w-4 h-4" />
-              <span className="hidden sm:inline">Matches</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="recommendations" className="space-y-6">
-            <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-              <CardHeader className="pb-6 bg-gradient-to-r from-violet-500/10 to-purple-500/10">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-violet-500 to-purple-500 rounded-xl blur opacity-30"></div>
-                    <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
-                      <Users className="w-6 h-6 text-violet-300" />
-                    </div>
-                  </div>
-                  <div>
-                    <CardTitle className="text-white text-xl font-bold">Discover New People</CardTitle>
-                    <CardDescription className="text-white/60 font-medium mt-1">
-                      Curated profiles that match your cosmic compatibility
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6">
-                {isLoading.recommendations ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="text-center">
-                      <div className="relative w-16 h-16 mx-auto mb-6">
-                        <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-lg opacity-50"></div>
-                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                  <div className="max-h-96 overflow-y-auto p-4">
+                    <div className="space-y-3">
+                      {systemNotifications.length > 0 && systemNotifications.map((notification, index) => (
+                        <div key={`system-${index}`} className="p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-white/10">
+                          <p className="text-white text-sm">{notification.message}</p>
+                          <p className="text-white/40 text-xs mt-1">
+                            {formatNotificationDate(notification.updated)}
+                          </p>
                         </div>
-                      </div>
-                      <p className="text-white/70 font-medium">Discovering your perfect matches...</p>
-                    </div>
-                  </div>
-                ) : recommendations.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence mode="popLayout">
-                      {recommendations.map((user) => (
-                        <UserCard 
-                          key={`recommendation-${user.recommendation_uid}`} 
-                          user={user} 
-                        />
                       ))}
-                    </AnimatePresence>
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={Users}
-                    title="No recommendations yet"
-                    description="We're working on finding your perfect matches. Check back soon!"
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="awaiting" className="space-y-6">
-            <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-              <CardHeader className="pb-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl blur opacity-30"></div>
-                    <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
-                      <Clock className="w-6 h-6 text-amber-300" />
-                    </div>
-                  </div>
-                  <div>
-                    <CardTitle className="text-white text-xl font-bold">Awaiting Response</CardTitle>
-                    <CardDescription className="text-white/60 font-medium mt-1">
-                      People waiting for your decision
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6">
-                {isLoading.awaiting ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="text-center">
-                      <div className="relative w-16 h-16 mx-auto mb-6">
-                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full blur-lg opacity-50"></div>
-                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                      
+                      {messages.length > 0 && messages.map((message) => (
+                        <div key={`message-${message.id}`} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                          <p className="text-white text-sm">{message.text}</p>
+                          {message.userName && (
+                            <p className="text-white/60 text-xs mt-1">From: {message.userName}</p>
+                          )}
+                          <p className="text-white/40 text-xs mt-1">
+                            {formatDistanceToNow(message.timestamp, { addSuffix: true })}
+                          </p>
                         </div>
-                      </div>
-                      <p className="text-white/70 font-medium">Loading awaiting responses...</p>
-                    </div>
-                  </div>
-                ) : awaiting.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence mode="popLayout">
-                      {awaiting.map((user) => (
-                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} />
                       ))}
-                    </AnimatePresence>
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={Clock}
-                    title="No pending responses"
-                    description="You're all caught up with your responses!"
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="matches" className="space-y-6">
-            <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-              <CardHeader className="pb-6 bg-gradient-to-r from-pink-500/10 to-red-500/10">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-pink-500 to-red-500 rounded-xl blur opacity-30"></div>
-                    <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
-                      <Heart className="w-6 h-6 text-pink-300" />
-                    </div>
-                  </div>
-                  <div>
-                    <CardTitle className="text-white text-xl font-bold">Your Matches</CardTitle>
-                    <CardDescription className="text-white/60 font-medium mt-1">
-                      People who liked you back - it's a match!
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6">
-                {isLoading.matches ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="text-center">
-                      <div className="relative w-16 h-16 mx-auto mb-6">
-                        <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-red-500 rounded-full blur-lg opacity-50"></div>
-                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                      
+                      {systemNotifications.length === 0 && messages.length === 0 && (
+                        <div className="text-center py-8">
+                          <Bell className="w-8 h-8 text-white/40 mx-auto mb-2" />
+                          <p className="text-white/60 text-sm">No notifications yet</p>
+                          <p className="text-white/40 text-xs mt-1">System updates will appear here</p>
                         </div>
-                      </div>
-                      <p className="text-white/70 font-medium">Loading your matches...</p>
+                      )}
                     </div>
                   </div>
-                ) : matches.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence mode="popLayout">
-                      {matches.map((user) => (
-                        <UserCard key={`match-${user.recommendation_uid}`} user={user} />
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={Heart}
-                    title="No matches yet"
-                    description="Keep swiping to find your perfect match! When someone likes you back, they'll appear here."
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      {showChat && userUID && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="bg-white rounded-lg shadow-xl w-80 sm:w-96 mb-4 border border-indigo-100"
-          >
-            <div className="p-4 border-b flex justify-between items-center bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-t-lg">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  <span className="text-lg font-['Lavanderia']">D</span>
-                </div>
-                <h3 className="font-['Lavanderia'] text-2xl">Destiny</h3>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  setShowChat(false);
-                  sessionStorage.setItem('destinyChatDismissed', 'true');
-                }}
-                className="h-8 w-8 hover:bg-indigo-500/20 text-white"
+                </PopoverContent>
+              </Popover>
+              <Button 
+                onClick={handleViewProfile}
+                variant="outline"
+                size="sm"
+                className="border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
               >
-                <X className="h-5 w-5" />
+                <User className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Profile</span>
               </Button>
             </div>
-            <div className="p-4">
-              <div className="bg-indigo-50 rounded-lg p-3 mb-4">
-                <p className="text-gray-700 text-sm">{chatMessage}</p>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Type your response..."
-                  className="flex-1 text-sm border-indigo-100 focus:border-indigo-300 text-gray-900 placeholder:text-gray-500"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleChatResponse(e.currentTarget.value);
-                      e.currentTarget.value = '';
-                    }
-                  }}
-                />
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          <Tabs defaultValue="recommendations" className="space-y-6 sm:space-y-8" onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-3 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
+              <TabsTrigger 
+                value="recommendations" 
+                className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
+              >
+                <Users className="w-4 h-4" />
+                <span className="hidden sm:inline">Discover</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="awaiting" 
+                className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
+              >
+                <Clock className="w-4 h-4" />
+                <span className="hidden sm:inline">Awaiting</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="matches" 
+                className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
+              >
+                <Heart className="w-4 h-4" />
+                <span className="hidden sm:inline">Matches</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="recommendations" className="space-y-6">
+              <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+                <CardHeader className="pb-6 bg-gradient-to-r from-violet-500/10 to-purple-500/10">
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-violet-500 to-purple-500 rounded-xl blur opacity-30"></div>
+                      <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
+                        <Users className="w-6 h-6 text-violet-300" />
+                      </div>
+                    </div>
+                    <div>
+                      <CardTitle className="text-white text-xl font-bold">Discover New People</CardTitle>
+                      <CardDescription className="text-white/60 font-medium mt-1">
+                        Curated profiles that match your cosmic compatibility
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {isLoading.recommendations ? (
+                    <div className="flex items-center justify-center py-20">
+                      <div className="text-center">
+                        <div className="relative w-16 h-16 mx-auto mb-6">
+                          <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-lg opacity-50"></div>
+                          <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                          </div>
+                        </div>
+                        <p className="text-white/70 font-medium">Discovering your perfect matches...</p>
+                      </div>
+                    </div>
+                  ) : recommendations.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <AnimatePresence mode="popLayout">
+                        {recommendations.map((user) => (
+                          <UserCard 
+                            key={`recommendation-${user.recommendation_uid}`} 
+                            user={user} 
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={Users}
+                      title="No recommendations yet"
+                      description="We're working on finding your perfect matches. Check back soon!"
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="awaiting" className="space-y-6">
+              <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+                <CardHeader className="pb-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl blur opacity-30"></div>
+                      <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
+                        <Clock className="w-6 h-6 text-amber-300" />
+                      </div>
+                    </div>
+                    <div>
+                      <CardTitle className="text-white text-xl font-bold">Awaiting Response</CardTitle>
+                      <CardDescription className="text-white/60 font-medium mt-1">
+                        People waiting for your decision
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {isLoading.awaiting ? (
+                    <div className="flex items-center justify-center py-20">
+                      <div className="text-center">
+                        <div className="relative w-16 h-16 mx-auto mb-6">
+                          <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full blur-lg opacity-50"></div>
+                          <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                          </div>
+                        </div>
+                        <p className="text-white/70 font-medium">Loading awaiting responses...</p>
+                      </div>
+                    </div>
+                  ) : awaiting.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <AnimatePresence mode="popLayout">
+                        {awaiting.map((user) => (
+                          <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={Clock}
+                      title="No pending responses"
+                      description="You're all caught up with your responses!"
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="matches" className="space-y-6">
+              <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+                <CardHeader className="pb-6 bg-gradient-to-r from-pink-500/10 to-red-500/10">
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-pink-500 to-red-500 rounded-xl blur opacity-30"></div>
+                      <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
+                        <Heart className="w-6 h-6 text-pink-300" />
+                      </div>
+                    </div>
+                    <div>
+                      <CardTitle className="text-white text-xl font-bold">Your Matches</CardTitle>
+                      <CardDescription className="text-white/60 font-medium mt-1">
+                        People who liked you back - it's a match!
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {isLoading.matches ? (
+                    <div className="flex items-center justify-center py-20">
+                      <div className="text-center">
+                        <div className="relative w-16 h-16 mx-auto mb-6">
+                          <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-red-500 rounded-full blur-lg opacity-50"></div>
+                          <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                          </div>
+                        </div>
+                        <p className="text-white/70 font-medium">Loading your matches...</p>
+                      </div>
+                    </div>
+                  ) : matches.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <AnimatePresence mode="popLayout">
+                        {matches.map((user) => (
+                          <UserCard key={`match-${user.recommendation_uid}`} user={user} />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={Heart}
+                      title="No matches yet"
+                      description="Keep swiping to find your perfect match! When someone likes you back, they'll appear here."
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {showChat && userUID && (
+          <div className="fixed bottom-6 right-6 z-50">
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="bg-white rounded-lg shadow-xl w-80 sm:w-96 mb-4 border border-indigo-100 flex flex-col max-h-[80vh]"
+            >
+              <div className="p-4 border-b flex justify-between items-center bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-t-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                    <span className="text-lg font-['Lavanderia']">D</span>
+                  </div>
+                  <h3 className="font-['Lavanderia'] text-2xl">Destiny</h3>
+                </div>
                 <Button
-                  onClick={() => {
-                    const input = document.querySelector('input');
-                    if (input) {
-                      handleChatResponse(input.value);
-                      input.value = '';
-                    }
-                  }}
-                  className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-4"
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleChatExit}
+                  className="h-8 w-8 hover:bg-indigo-500/20 text-white"
                 >
-                  Send
+                  <X className="h-5 w-5" />
                 </Button>
               </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+              <div ref={chatHistoryRef} className="flex-1 overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-indigo-600 [&::-webkit-scrollbar-thumb]:rounded-full">
+                {chatHistory.map((message, index) => (
+                  <div 
+                    key={index} 
+                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] rounded-lg p-3 ${
+                      message.isUser 
+                        ? 'bg-indigo-600 text-white' 
+                        : 'bg-indigo-50 text-gray-700'
+                    }`}>
+                      <p className="text-sm">{message.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Type your response..."
+                    className="flex-1 text-sm border-indigo-100 focus:border-indigo-300 text-gray-900 placeholder:text-gray-500"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleChatResponse(e.currentTarget.value);
+                        e.currentTarget.value = '';
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = document.querySelector('input');
+                      if (input) {
+                        handleChatResponse(input.value);
+                        input.value = '';
+                      }
+                    }}
+                    className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-4"
+                  >
+                    Send
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
 
-      <div className="fixed bottom-6 right-6 z-40">
-        <ChatWithDestiny 
-          userUID={userUID} 
-          onClose={() => {
-            setShowChatWindow(false);
-          }}
-          showChatWindow={showChatWindow}
-        />
+        <div className="fixed bottom-6 right-6 z-40">
+          <ChatWithDestiny 
+            userUID={userUID} 
+            onClose={() => {
+              setShowChatWindow(false);
+            }}
+            showChatWindow={showChatWindow}
+          />
+        </div>
       </div>
     </div>
   );

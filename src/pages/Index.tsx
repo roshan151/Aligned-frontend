@@ -397,6 +397,7 @@ const Index = () => {
 
     // Store only the minimal login data
     localStorage.setItem('userData', JSON.stringify(minimalLoginData));
+    localStorage.setItem('isLoggedIn', 'true');
     
     // Initialize empty dashboard data
     const initialDashboardData: DashboardData = {
@@ -441,6 +442,7 @@ const Index = () => {
     localStorage.removeItem('userUID');
     localStorage.removeItem('userData');
     localStorage.removeItem('profileData');
+    localStorage.removeItem('isLoggedIn');
     // Note: dashboardData is no longer cached so no need to remove it
     
     // Reset all state
@@ -454,27 +456,31 @@ const Index = () => {
 
   useEffect(() => {
     // Check for existing login state on app load
-    const storedUID = localStorage.getItem('userUID');
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const storedUserData = localStorage.getItem('userData');
     const storedProfileData = localStorage.getItem('profileData');
     // Note: dashboardData is no longer cached
     
-    if (storedUID) {
-      setUserUID(storedUID);
-      setIsLoggedIn(true);
-      
-      // Load cached profile data if available
-      if (storedProfileData) {
-        try {
-          const parsedProfileData = JSON.parse(storedProfileData);
-          setProfileData(parsedProfileData);
-          console.log('Profile data loaded from cache');
-        } catch (error) {
-          console.error('Error parsing cached profile data:', error);
+    if (isLoggedIn && storedUserData) {
+      try {
+        const userData = JSON.parse(storedUserData);
+        setUserUID(userData.uid);
+        setIsLoggedIn(true);
+        
+        // Load cached profile data if available
+        if (storedProfileData) {
+          try {
+            const parsedProfileData = JSON.parse(storedProfileData);
+            setProfileData(parsedProfileData);
+            console.log('Profile data loaded from cache');
+          } catch (error) {
+            console.error('Error parsing cached profile data:', error);
+          }
         }
+      } catch (error) {
+        console.error('Error parsing stored user data:', error);
+        handleLogout(); // Clear invalid data
       }
-      
-      // Dashboard data will be loaded fresh when needed
-      console.log('Dashboard data will be loaded fresh on demand');
     }
     setIsLoading(false);
   }, []);
@@ -507,7 +513,7 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
       <Routes>
         <Route 
           path="/login" 

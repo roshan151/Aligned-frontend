@@ -21,6 +21,7 @@ interface ChatWithDestinyProps {
 const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyProps) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [history, setHistory] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const chatHistoryRef = useRef<HTMLDivElement>(null);
@@ -54,10 +55,11 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
     try {
       const metadata = {
         uid: userUID,
-        user_input: inputMessage
+        user_input: inputMessage,
+        history: history
       };
 
-      const response = await fetch("https://lovebhagya.com/chat:preference", {
+      const response = await fetch("https://lovebhagya.com/chat/preference:continue", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,8 +80,12 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
           timestamp: new Date(),
         }]);
 
+        if (data.history) {
+          setHistory(data.history);
+        }
+
         // If this is the final message, mark chat as completed
-        if (data.completed) {
+        if (!data.continue) {
           sessionStorage.setItem('destinyChatCompleted', 'true');
           setTimeout(() => {
             setIsChatOpen(false);
@@ -107,8 +113,40 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
   };
 
   const handleClose = () => {
-    setIsChatOpen(false);
-    onClose();
+    // Send exit message to server
+    if (userUID) {
+      fetch('https://lovebhagya.com/chat/preference:continue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': 'http://localhost:8080'
+        },
+        body: JSON.stringify({
+          uid: userUID,
+          user_input: "exit",
+          history: messages.map(m => m.text)
+        })
+      })
+      .then(() => {
+        // Clear messages and close chat
+        setMessages([]);
+        setIsChatOpen(false);
+        onClose();
+      })
+      .catch(error => {
+        console.error('Error handling chat exit:', error);
+        // Still close the chat even if the exit call fails
+        setMessages([]);
+        setIsChatOpen(false);
+        onClose();
+      });
+    } else {
+      // If no UID, just close the chat
+      setMessages([]);
+      setIsChatOpen(false);
+      onClose();
+    }
   };
 
   return (
@@ -151,25 +189,22 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
                     <p className="text-gray-500 text-lg font-medium">perfect match</p>
                   </div>
                 )}
-                {messages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className={`max-w-[80%] rounded-lg p-3 ${
-                        message.isUser
-                          ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white'
-                          : 'bg-gray-100 text-gray-900'
-                      }`}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-indigo-600 [&::-webkit-scrollbar-thumb]:rounded-full">
+                  {messages.map((message, index) => (
+                    <div 
+                      key={index} 
+                      className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
                     >
-                      {message.text}
-                    </motion.div>
-                  </div>
-                ))}
+                      <div className={`max-w-[80%] rounded-lg p-3 ${
+                        message.isUser 
+                          ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white' 
+                          : 'bg-gray-100 text-gray-900'
+                      }`}>
+                        <p className="text-sm">{message.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
                 {isLoading && (
                   <div className="flex justify-start">
                     <div className="bg-gray-100 rounded-lg p-3 text-gray-900">

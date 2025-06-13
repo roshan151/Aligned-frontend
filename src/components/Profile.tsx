@@ -153,8 +153,8 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
+      <div className="w-full max-w-7xl mx-auto px-4 py-8">
         {/* Enhanced Hero Section */}
         <div className="relative mb-12 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-violet-600/20 via-purple-600/20 to-pink-600/20 rounded-3xl blur-xl"></div>
