@@ -8,6 +8,7 @@ import Recommendations from "./Recommendations";
 import Notifications from "./Notifications";
 import Awaiting from "./Awaiting";
 import ProfilePage from "./Profile";
+import Chat from "./Chat";
 import { config } from "../config/api";
 import { User, Notification, DashboardData, ProfileData } from "../types";
 
@@ -377,6 +378,9 @@ const Index = () => {
     setUserUID(uid);
     setIsLoggedIn(true);
     
+    // Store UID in localStorage
+    localStorage.setItem('userUID', uid);
+    
     // Store only UID and notifications from login response
     const minimalLoginData = {
       uid: loginData.uid,
@@ -465,18 +469,18 @@ const Index = () => {
       try {
         const userData = JSON.parse(storedUserData);
         setUserUID(userData.uid);
-        setIsLoggedIn(true);
-        
-        // Load cached profile data if available
-        if (storedProfileData) {
-          try {
-            const parsedProfileData = JSON.parse(storedProfileData);
-            setProfileData(parsedProfileData);
-            console.log('Profile data loaded from cache');
-          } catch (error) {
-            console.error('Error parsing cached profile data:', error);
-          }
+      setIsLoggedIn(true);
+      
+      // Load cached profile data if available
+      if (storedProfileData) {
+        try {
+          const parsedProfileData = JSON.parse(storedProfileData);
+          setProfileData(parsedProfileData);
+          console.log('Profile data loaded from cache');
+        } catch (error) {
+          console.error('Error parsing cached profile data:', error);
         }
+      }
       } catch (error) {
         console.error('Error parsing stored user data:', error);
         handleLogout(); // Clear invalid data
@@ -585,6 +589,14 @@ const Index = () => {
           element={
             isLoggedIn ? 
             <Awaiting /> : 
+            <Navigate to="/login" />
+          } 
+        />
+        <Route 
+          path="/chat/:uid" 
+          element={
+            isLoggedIn ? 
+            <Chat /> : 
             <Navigate to="/login" />
           } 
         />

@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin } from "lucide-react";
+import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin, MessageCircle } from "lucide-react";
 import { config } from "../config/api";
 import { S3_CONFIG } from "../config/s3";
 import UserActions from "./UserActions";
@@ -266,7 +266,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     // Check if user has dismissed or completed the chat
     const hasDismissed = sessionStorage.getItem('destinyChatDismissed');
     const hasCompleted = sessionStorage.getItem('destinyChatCompleted');
-    
+      
     if (!hasDismissed && !hasCompleted && userUID) {
       console.log('Setting up chat timer with UID:', userUID);
       // Generate random delay between 20 and 70 seconds
@@ -290,7 +290,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             setChatMessage(data.message);
             // Initialize chat history with the first message
             setChatHistory([{ text: data.message, isUser: false }]);
-            setShowChat(true);
+        setShowChat(true);
             setIsInitialResponse(true);
           } else {
             console.error('Failed to initiate chat:', response.status);
@@ -535,43 +535,87 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               </div>
 
               <div className="flex justify-center items-center gap-6 mt-6">
-                <div className="relative group">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                  {user.user_align ? (
-                    <div className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-emerald-300" />
+                {user.user_align ? (
+                  // Show chat and block buttons for matched users
+                  <>
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { 
+                          e.stopPropagation(); 
+                          navigate(`/chat/${user.recommendation_uid}`, {
+                            state: {
+                              userName: user.name,
+                              userProfilePicture: profileImage
+                            }
+                          });
+                        }}
+                        variant="outline"
+                        size="lg"
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                      >
+                        <MessageCircle className="w-4 h-4 group-hover:scale-110 transition-all duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Chat
+                      </span>
                     </div>
-                  ) : (
-                    <Button
-                      onClick={e => { e.stopPropagation(); handleAction('align'); }}
-                      variant="outline"
-                      size="lg"
-                      disabled={isLoading}
-                      className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
-                    >
-                      <Heart className="w-4 h-4 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
-                    </Button>
-                  )}
-                  <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
-                    {user.user_align ? 'Waiting' : 'Align'}
-                  </span>
-                </div>
 
-                <div className="relative group">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                  <Button
-                    onClick={e => { e.stopPropagation(); handleAction('skip'); }}
-                    variant="outline"
-                    size="lg"
-                    disabled={isLoading}
-                    className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
-                  >
-                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
-                  </Button>
-                  <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
-                    Skip
-                  </span>
-                </div>
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { 
+                          e.stopPropagation(); 
+                          // TODO: Implement block functionality
+                          console.log('Block user:', user.recommendation_uid);
+                        }}
+                        variant="outline"
+                        size="lg"
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                      >
+                        <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Block
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  // Show align and skip buttons for non-matched users
+                  <>
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { e.stopPropagation(); handleAction('align'); }}
+                        variant="outline"
+                        size="lg"
+                        disabled={isLoading}
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                      >
+                        <Heart className="w-4 h-4 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Align
+                      </span>
+                    </div>
+
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { e.stopPropagation(); handleAction('skip'); }}
+                        variant="outline"
+                        size="lg"
+                        disabled={isLoading}
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                      >
+                        <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Skip
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -823,269 +867,269 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
       <div className="w-full max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between">
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              <h1 className="text-3xl sm:text-6xl font-bold text-white tracking-tight font-['Lavanderia']">Aligned</h1>
-            </div>
-            <div className="flex gap-2 sm:gap-3">
-              <Popover open={isNotificationsOpen} onOpenChange={(open) => {
-                setIsNotificationsOpen(open);
-                if (open) setHasNewNotifications(false);
-              }}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="relative border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
-                  >
-                    <Bell className={`w-3 h-3 sm:w-4 sm:h-4 sm:mr-2 ${hasNewNotifications ? 'text-yellow-400 animate-pulse' : ''}`} />
-                    <span className="hidden sm:inline">Notifications</span>
-                    {totalNotificationCount > 0 && (
-                      <Badge className="ml-1 sm:ml-2 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center bg-red-500 text-white text-xs">
-                        {totalNotificationCount}
-                      </Badge>
+      {/* Header */}
+      <div className="border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between">
+          <div className="flex items-center space-x-2 sm:space-x-4">
+            <h1 className="text-3xl sm:text-6xl font-bold text-white tracking-tight font-['Lavanderia']">Aligned</h1>
+          </div>
+          <div className="flex gap-2 sm:gap-3">
+            <Popover open={isNotificationsOpen} onOpenChange={(open) => {
+              setIsNotificationsOpen(open);
+              if (open) setHasNewNotifications(false);
+            }}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="relative border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
+                >
+                  <Bell className={`w-3 h-3 sm:w-4 sm:h-4 sm:mr-2 ${hasNewNotifications ? 'text-yellow-400 animate-pulse' : ''}`} />
+                  <span className="hidden sm:inline">Notifications</span>
+                  {totalNotificationCount > 0 && (
+                    <Badge className="ml-1 sm:ml-2 h-4 w-4 sm:h-5 sm:w-5 p-0 flex items-center justify-center bg-red-500 text-white text-xs">
+                      {totalNotificationCount}
+                    </Badge>
+                  )}
+                  {hasNewNotifications && (
+                    <span className="absolute top-0 right-0 h-2 w-2 bg-yellow-400 rounded-full animate-ping"></span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0 bg-white/5 backdrop-blur-xl border border-white/10" align="end">
+                <div className="p-4 border-b border-white/10">
+                  <h3 className="font-semibold text-white text-lg">Notifications</h3>
+                  <p className="text-white/60 text-sm">Recent system updates</p>
+                </div>
+                <div className="max-h-96 overflow-y-auto p-4">
+                  <div className="space-y-3">
+                    {systemNotifications.length > 0 && systemNotifications.map((notification, index) => (
+                      <div key={`system-${index}`} className="p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-white/10">
+                        <p className="text-white text-sm">{notification.message}</p>
+                        <p className="text-white/40 text-xs mt-1">
+                          {formatNotificationDate(notification.updated)}
+                        </p>
+                      </div>
+                    ))}
+                    
+                    {messages.length > 0 && messages.map((message) => (
+                      <div key={`message-${message.id}`} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                        <p className="text-white text-sm">{message.text}</p>
+                        {message.userName && (
+                          <p className="text-white/60 text-xs mt-1">From: {message.userName}</p>
+                        )}
+                        <p className="text-white/40 text-xs mt-1">
+                          {formatDistanceToNow(message.timestamp, { addSuffix: true })}
+                        </p>
+                      </div>
+                    ))}
+                    
+                    {systemNotifications.length === 0 && messages.length === 0 && (
+                      <div className="text-center py-8">
+                        <Bell className="w-8 h-8 text-white/40 mx-auto mb-2" />
+                        <p className="text-white/60 text-sm">No notifications yet</p>
+                        <p className="text-white/40 text-xs mt-1">System updates will appear here</p>
+                      </div>
                     )}
-                    {hasNewNotifications && (
-                      <span className="absolute top-0 right-0 h-2 w-2 bg-yellow-400 rounded-full animate-ping"></span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 p-0 bg-white/5 backdrop-blur-xl border border-white/10" align="end">
-                  <div className="p-4 border-b border-white/10">
-                    <h3 className="font-semibold text-white text-lg">Notifications</h3>
-                    <p className="text-white/60 text-sm">Recent system updates</p>
                   </div>
-                  <div className="max-h-96 overflow-y-auto p-4">
-                    <div className="space-y-3">
-                      {systemNotifications.length > 0 && systemNotifications.map((notification, index) => (
-                        <div key={`system-${index}`} className="p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-white/10">
-                          <p className="text-white text-sm">{notification.message}</p>
-                          <p className="text-white/40 text-xs mt-1">
-                            {formatNotificationDate(notification.updated)}
-                          </p>
-                        </div>
-                      ))}
-                      
-                      {messages.length > 0 && messages.map((message) => (
-                        <div key={`message-${message.id}`} className="p-3 rounded-lg bg-white/5 border border-white/10">
-                          <p className="text-white text-sm">{message.text}</p>
-                          {message.userName && (
-                            <p className="text-white/60 text-xs mt-1">From: {message.userName}</p>
-                          )}
-                          <p className="text-white/40 text-xs mt-1">
-                            {formatDistanceToNow(message.timestamp, { addSuffix: true })}
-                          </p>
-                        </div>
-                      ))}
-                      
-                      {systemNotifications.length === 0 && messages.length === 0 && (
-                        <div className="text-center py-8">
-                          <Bell className="w-8 h-8 text-white/40 mx-auto mb-2" />
-                          <p className="text-white/60 text-sm">No notifications yet</p>
-                          <p className="text-white/40 text-xs mt-1">System updates will appear here</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <Button 
-                onClick={handleViewProfile}
-                variant="outline"
-                size="sm"
-                className="border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
-              >
-                <User className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Profile</span>
-              </Button>
-            </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button 
+              onClick={handleViewProfile}
+              variant="outline"
+              size="sm"
+              className="border-white/20 bg-white/5 backdrop-blur-xl text-white/90 hover:bg-white/10 hover:border-white/30 transition-all duration-300 font-medium text-xs sm:text-sm px-2 sm:px-4"
+            >
+              <User className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Profile</span>
+            </Button>
           </div>
         </div>
+      </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-          <Tabs defaultValue="recommendations" className="space-y-6 sm:space-y-8" onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
-              <TabsTrigger 
-                value="recommendations" 
-                className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
-              >
-                <Users className="w-4 h-4" />
-                <span className="hidden sm:inline">Discover</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="awaiting" 
-                className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
-              >
-                <Clock className="w-4 h-4" />
-                <span className="hidden sm:inline">Awaiting</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="matches" 
-                className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
-              >
-                <Heart className="w-4 h-4" />
-                <span className="hidden sm:inline">Matches</span>
-              </TabsTrigger>
-            </TabsList>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <Tabs defaultValue="recommendations" className="space-y-6 sm:space-y-8" onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
+            <TabsTrigger 
+              value="recommendations" 
+              className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Discover</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="awaiting" 
+              className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
+            >
+              <Clock className="w-4 h-4" />
+              <span className="hidden sm:inline">Awaiting</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="matches" 
+              className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-white/10 data-[state=active]:text-white font-medium rounded-xl transition-all duration-300 py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm"
+            >
+              <Heart className="w-4 h-4" />
+              <span className="hidden sm:inline">Matches</span>
+            </TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="recommendations" className="space-y-6">
-              <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-                <CardHeader className="pb-6 bg-gradient-to-r from-violet-500/10 to-purple-500/10">
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      <div className="absolute -inset-1 bg-gradient-to-r from-violet-500 to-purple-500 rounded-xl blur opacity-30"></div>
-                      <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
-                        <Users className="w-6 h-6 text-violet-300" />
-                      </div>
-                    </div>
-                    <div>
-                      <CardTitle className="text-white text-xl font-bold">Discover New People</CardTitle>
-                      <CardDescription className="text-white/60 font-medium mt-1">
-                        Curated profiles that match your cosmic compatibility
-                      </CardDescription>
+          <TabsContent value="recommendations" className="space-y-6">
+            <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+              <CardHeader className="pb-6 bg-gradient-to-r from-violet-500/10 to-purple-500/10">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-violet-500 to-purple-500 rounded-xl blur opacity-30"></div>
+                    <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
+                      <Users className="w-6 h-6 text-violet-300" />
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  {isLoading.recommendations ? (
-                    <div className="flex items-center justify-center py-20">
-                      <div className="text-center">
-                        <div className="relative w-16 h-16 mx-auto mb-6">
-                          <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-lg opacity-50"></div>
-                          <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
-                          </div>
+                  <div>
+                    <CardTitle className="text-white text-xl font-bold">Discover New People</CardTitle>
+                    <CardDescription className="text-white/60 font-medium mt-1">
+                      Curated profiles that match your cosmic compatibility
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {isLoading.recommendations ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="text-center">
+                      <div className="relative w-16 h-16 mx-auto mb-6">
+                        <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-purple-500 rounded-full blur-lg opacity-50"></div>
+                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
                         </div>
-                        <p className="text-white/70 font-medium">Discovering your perfect matches...</p>
                       </div>
-                    </div>
-                  ) : recommendations.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      <AnimatePresence mode="popLayout">
-                        {recommendations.map((user) => (
-                          <UserCard 
-                            key={`recommendation-${user.recommendation_uid}`} 
-                            user={user} 
-                          />
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={Users}
-                      title="No recommendations yet"
-                      description="We're working on finding your perfect matches. Check back soon!"
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="awaiting" className="space-y-6">
-              <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-                <CardHeader className="pb-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl blur opacity-30"></div>
-                      <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
-                        <Clock className="w-6 h-6 text-amber-300" />
-                      </div>
-                    </div>
-                    <div>
-                      <CardTitle className="text-white text-xl font-bold">Awaiting Response</CardTitle>
-                      <CardDescription className="text-white/60 font-medium mt-1">
-                        People waiting for your decision
-                      </CardDescription>
+                      <p className="text-white/70 font-medium">Discovering your perfect matches...</p>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  {isLoading.awaiting ? (
-                    <div className="flex items-center justify-center py-20">
-                      <div className="text-center">
-                        <div className="relative w-16 h-16 mx-auto mb-6">
-                          <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full blur-lg opacity-50"></div>
-                          <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
-                          </div>
-                        </div>
-                        <p className="text-white/70 font-medium">Loading awaiting responses...</p>
-                      </div>
-                    </div>
-                  ) : awaiting.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      <AnimatePresence mode="popLayout">
-                        {awaiting.map((user) => (
-                          <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} />
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={Clock}
-                      title="No pending responses"
-                      description="You're all caught up with your responses!"
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                ) : recommendations.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <AnimatePresence mode="popLayout">
+                      {recommendations.map((user) => (
+                        <UserCard 
+                          key={`recommendation-${user.recommendation_uid}`} 
+                          user={user} 
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Users}
+                    title="No recommendations yet"
+                    description="We're working on finding your perfect matches. Check back soon!"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            <TabsContent value="matches" className="space-y-6">
-              <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-                <CardHeader className="pb-6 bg-gradient-to-r from-pink-500/10 to-red-500/10">
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      <div className="absolute -inset-1 bg-gradient-to-r from-pink-500 to-red-500 rounded-xl blur opacity-30"></div>
-                      <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
-                        <Heart className="w-6 h-6 text-pink-300" />
-                      </div>
-                    </div>
-                    <div>
-                      <CardTitle className="text-white text-xl font-bold">Your Matches</CardTitle>
-                      <CardDescription className="text-white/60 font-medium mt-1">
-                        People who liked you back - it's a match!
-                      </CardDescription>
+          <TabsContent value="awaiting" className="space-y-6">
+            <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+              <CardHeader className="pb-6 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl blur opacity-30"></div>
+                    <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
+                      <Clock className="w-6 h-6 text-amber-300" />
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  {isLoading.matches ? (
-                    <div className="flex items-center justify-center py-20">
-                      <div className="text-center">
-                        <div className="relative w-16 h-16 mx-auto mb-6">
-                          <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-red-500 rounded-full blur-lg opacity-50"></div>
-                          <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
-                          </div>
+                  <div>
+                    <CardTitle className="text-white text-xl font-bold">Awaiting Response</CardTitle>
+                    <CardDescription className="text-white/60 font-medium mt-1">
+                      People waiting for your decision
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {isLoading.awaiting ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="text-center">
+                      <div className="relative w-16 h-16 mx-auto mb-6">
+                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-500 rounded-full blur-lg opacity-50"></div>
+                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
                         </div>
-                        <p className="text-white/70 font-medium">Loading your matches...</p>
                       </div>
+                      <p className="text-white/70 font-medium">Loading awaiting responses...</p>
                     </div>
-                  ) : matches.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      <AnimatePresence mode="popLayout">
-                        {matches.map((user) => (
-                          <UserCard key={`match-${user.recommendation_uid}`} user={user} />
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={Heart}
-                      title="No matches yet"
-                      description="Keep swiping to find your perfect match! When someone likes you back, they'll appear here."
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
+                  </div>
+                ) : awaiting.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <AnimatePresence mode="popLayout">
+                      {awaiting.map((user) => (
+                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Clock}
+                    title="No pending responses"
+                    description="You're all caught up with your responses!"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {showChat && userUID && (
+          <TabsContent value="matches" className="space-y-6">
+            <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+              <CardHeader className="pb-6 bg-gradient-to-r from-pink-500/10 to-red-500/10">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-pink-500 to-red-500 rounded-xl blur opacity-30"></div>
+                    <div className="relative w-12 h-12 bg-white/10 backdrop-blur-xl rounded-xl border border-white/20 flex items-center justify-center">
+                      <Heart className="w-6 h-6 text-pink-300" />
+                    </div>
+                  </div>
+                  <div>
+                    <CardTitle className="text-white text-xl font-bold">Your Matches</CardTitle>
+                    <CardDescription className="text-white/60 font-medium mt-1">
+                      People who liked you back - it's a match!
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {isLoading.matches ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="text-center">
+                      <div className="relative w-16 h-16 mx-auto mb-6">
+                        <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-red-500 rounded-full blur-lg opacity-50"></div>
+                        <div className="relative w-16 h-16 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white/70"></div>
+                        </div>
+                      </div>
+                      <p className="text-white/70 font-medium">Loading your matches...</p>
+                    </div>
+                  </div>
+                ) : matches.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <AnimatePresence mode="popLayout">
+                      {matches.map((user) => (
+                        <UserCard key={`match-${user.recommendation_uid}`} user={user} />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={Heart}
+                    title="No matches yet"
+                    description="Keep swiping to find your perfect match! When someone likes you back, they'll appear here."
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {showChat && userUID && (
           <div className="fixed bottom-6 right-6 z-50">
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -1157,13 +1201,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         )}
 
         <div className="fixed bottom-6 right-6 z-40">
-          <ChatWithDestiny 
-            userUID={userUID} 
-            onClose={() => {
+        <ChatWithDestiny 
+          userUID={userUID}
+          onClose={() => {
               setShowChatWindow(false);
-            }}
+          }}
             showChatWindow={showChatWindow}
-          />
+        />
         </div>
       </div>
     </div>
