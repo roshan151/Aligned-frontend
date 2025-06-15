@@ -92,16 +92,18 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
         sessionStorage.removeItem('destinyChatDismissed');
         sessionStorage.removeItem('destinyChatCompleted');
         
-        // Store only UID and notifications from login response
-        const minimalLoginData = {
+        // Extract email, phone, UID and notifications from login response
+        const loginData = {
           uid: data.UID,
+          email: data.EMAIL || data.email || email, // Use login response email or fallback to login email
+          phone: data.PHONE || data.phone || '',
           notifications: data.NOTIFICATIONS || []
         };
         
-        console.log('Storing minimal login data:', minimalLoginData);
+        console.log('Storing login data with email and phone:', loginData);
         
-        // Use the onSuccessfulLogin handler with minimal data
-        await onSuccessfulLogin(data.UID, minimalLoginData);
+        // Use the onSuccessfulLogin handler with email and phone data
+        await onSuccessfulLogin(data.UID, loginData);
         
       } else {
         console.error('Login failed:', data);

@@ -26,7 +26,7 @@ const ProfileView = ({ user, onBack, children }: ProfileViewProps) => {
   const hobbiesArray = getHobbiesArray(user.hobbies);
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="w-full max-w-2xl mx-auto overflow-x-hidden">
       <Button 
         onClick={onBack}
         variant="ghost" 
