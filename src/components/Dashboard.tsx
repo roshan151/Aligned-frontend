@@ -398,7 +398,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
 
   const totalNotificationCount = messages.length + systemNotifications.length;
 
-  const UserCard = React.forwardRef<HTMLDivElement, { user: RecommendationCard }>(({ user }, ref) => {
+  const UserCard = React.forwardRef<HTMLDivElement, { user: RecommendationCard; queue?: string }>(({ user, queue }, ref) => {
     const [isLoading, setIsLoading] = useState(false);
     const [showPhotos, setShowPhotos] = useState(false);
     const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -535,8 +535,75 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               </div>
 
               <div className="flex justify-center items-center gap-6 mt-6">
-                {user.user_align ? (
-                  // Show chat and block buttons for matched users
+                {queue === 'awaiting' ? (
+                  // Awaiting queue logic: show align and skip buttons if user_align is false, waiting icon and skip if true
+                  user.user_align ? (
+                    // Show waiting icon and skip button when user has already aligned
+                    <>
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <div className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 transition-all duration-300 shadow-2xl flex items-center justify-center">
+                          <Clock className="w-4 h-4 animate-pulse" />
+                        </div>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Waiting
+                        </span>
+                      </div>
+
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <Button
+                          onClick={e => { e.stopPropagation(); handleAction('skip'); }}
+                          variant="outline"
+                          size="lg"
+                          disabled={isLoading}
+                          className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                        >
+                          <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                        </Button>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Skip
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    // Show align and skip buttons when user hasn't aligned yet
+                    <>
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <Button
+                          onClick={e => { e.stopPropagation(); handleAction('align'); }}
+                          variant="outline"
+                          size="lg"
+                          disabled={isLoading}
+                          className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                        >
+                          <Heart className="w-4 h-4 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
+                        </Button>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Align
+                        </span>
+                      </div>
+
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <Button
+                          onClick={e => { e.stopPropagation(); handleAction('skip'); }}
+                          variant="outline"
+                          size="lg"
+                          disabled={isLoading}
+                          className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                        >
+                          <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                        </Button>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Skip
+                        </span>
+                      </div>
+                    </>
+                  )
+                ) : user.user_align ? (
+                  // Show chat and block buttons for matched users (non-awaiting queues)
                   <>
                     <div className="relative group">
                       <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
@@ -1012,6 +1079,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                         <UserCard 
                           key={`recommendation-${user.recommendation_uid}`} 
                           user={user} 
+                          queue="recommendations"
                         />
                       ))}
                     </AnimatePresence>
@@ -1062,7 +1130,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       {awaiting.map((user) => (
-                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} />
+                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} queue="awaiting" />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -1112,7 +1180,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       {matches.map((user) => (
-                        <UserCard key={`match-${user.recommendation_uid}`} user={user} />
+                        <UserCard key={`match-${user.recommendation_uid}`} user={user} queue="matches" />
                       ))}
                     </AnimatePresence>
                   </div>
