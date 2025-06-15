@@ -15,7 +15,8 @@ import {
   Mail,
   Globe,
   Star,
-  Sparkles
+  Sparkles,
+  Phone
 } from "lucide-react";
 import { getSignedS3Url, extractS3Key } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ interface ProfileData {
   uid: string;
   email: string;
   name: string;
+  phone?: string;
   gender?: string;
   city?: string;
   country?: string;
@@ -139,6 +141,30 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
     return time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const formatDateOfBirth = (dateString: string) => {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString; // Return original if invalid date
+    
+    const day = date.getDate();
+    const month = date.toLocaleString('en-US', { month: 'long' });
+    const year = date.getFullYear();
+    
+    // Add ordinal suffix to day
+    const getOrdinalSuffix = (day: number) => {
+      if (day > 3 && day < 21) return 'th';
+      switch (day % 10) {
+        case 1: return 'st';
+        case 2: return 'nd';
+        case 3: return 'rd';
+        default: return 'th';
+      }
+    };
+    
+    return `${day}${getOrdinalSuffix(day)} ${month}, ${year}`;
+  };
+
   const handleEditProfile = () => {
     if (onEdit) {
       onEdit();
@@ -153,8 +179,8 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
+      <div className="w-full max-w-7xl mx-auto px-4 py-8">
         {/* Enhanced Hero Section */}
         <div className="relative mb-12 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-violet-600/20 via-purple-600/20 to-pink-600/20 rounded-3xl blur-xl"></div>
@@ -214,7 +240,7 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                 </div>
 
                 {/* Enhanced Quick Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {profileData?.dob && (
                     <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 hover:bg-white/15 transition-all duration-300 group">
                       <div className="flex items-center justify-center md:justify-start gap-3">
@@ -230,14 +256,14 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                   )}
                   
                   {profileData?.city && profileData.country && (
-                    <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 hover:bg-white/15 transition-all duration-300 group">
-                      <div className="flex items-center justify-center md:justify-start gap-3">
-                        <div className="p-2 bg-blue-500/20 rounded-full group-hover:bg-blue-500/30 transition-colors">
+                    <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 hover:bg-white/15 transition-all duration-300 group min-h-[80px] sm:min-h-[72px]">
+                      <div className="flex items-start justify-center md:justify-start gap-3 h-full">
+                        <div className="p-2 bg-blue-500/20 rounded-full group-hover:bg-blue-500/30 transition-colors flex-shrink-0">
                           <MapPin className="w-5 h-5 text-blue-300" />
                         </div>
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm text-white/60 font-medium">Location</p>
-                          <p className="text-sm font-bold text-white">{profileData.city}</p>
+                          <p className="text-sm font-bold text-white break-words leading-tight">{profileData.city}, {profileData.country}</p>
                         </div>
                       </div>
                     </div>
@@ -297,7 +323,15 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                       <Mail className="w-5 h-5 text-violet-400" />
                       <label className="text-sm font-bold text-violet-200 uppercase tracking-wider">Email</label>
                     </div>
-                    <p className="text-lg text-white font-medium">{profileData?.email}</p>
+                    <p className="text-lg text-white font-medium">{profileData?.email || 'Not provided'}</p>
+                  </div>
+
+                  <div className="bg-white/10 backdrop-blur-xl rounded-xl p-6 border border-white/20 hover:bg-white/15 transition-all duration-300">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Phone className="w-5 h-5 text-green-400" />
+                      <label className="text-sm font-bold text-green-200 uppercase tracking-wider">Phone</label>
+                    </div>
+                    <p className="text-lg text-white font-medium">{profileData?.phone || 'Not provided'}</p>
                   </div>
                   
                   {profileData?.gender && (
@@ -316,7 +350,7 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                         <Calendar className="w-5 h-5 text-blue-400" />
                         <label className="text-sm font-bold text-blue-200 uppercase tracking-wider">Date of Birth</label>
                       </div>
-                      <p className="text-lg text-white font-medium">{new Date(profileData.dob).toLocaleDateString()}</p>
+                      <p className="text-lg text-white font-medium">{formatDateOfBirth(profileData.dob)}</p>
                     </div>
                   )}
 

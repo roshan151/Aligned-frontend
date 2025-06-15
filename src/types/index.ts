@@ -2,6 +2,7 @@ export interface User {
   uid: string;
   name: string;
   email?: string;
+  phone?: string;
   city?: string;
   country?: string;
   age?: number;
@@ -33,6 +34,7 @@ export interface ProfileData {
   uid: string;
   email: string;
   name: string;
+  phone?: string;
   gender?: string;
   city?: string;
   country?: string;

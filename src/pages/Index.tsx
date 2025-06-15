@@ -8,6 +8,7 @@ import Recommendations from "./Recommendations";
 import Notifications from "./Notifications";
 import Awaiting from "./Awaiting";
 import ProfilePage from "./Profile";
+import Chat from "./Chat";
 import { config } from "../config/api";
 import { User, Notification, DashboardData, ProfileData } from "../types";
 
@@ -195,6 +196,7 @@ const Index = () => {
       uid: data.UID || data.uid || '',
       name: data.NAME || data.name || 'Unknown User',
       email: data.EMAIL || data.email || '',
+      phone: data.PHONE || data.phone || '',
       city: data.CITY || data.city || '',
       country: data.COUNTRY || data.country || '',
       birth_city: data.BIRTH_CITY || data.birth_city || '',
@@ -305,6 +307,7 @@ const Index = () => {
       uid: loginData.uid || '',
       name: loginData.name || 'Unknown User',
       email: loginData.email || '',
+      phone: loginData.phone || '',
       city: loginData.city || '',
       country: loginData.country || '',
       birth_city: '',
@@ -374,20 +377,37 @@ const Index = () => {
 
   const handleSuccessfulLogin = async (uid: string, loginData: any) => {
     console.log('Handling successful login with data:', loginData);
-    setUserUID(uid);
+    console.log('UID parameter:', uid);
+    console.log('UID from loginData:', loginData.uid);
+    
+    // Ensure we use the correct UID (prefer the one from the parameter as it's from the API response)
+    const finalUID = uid || loginData.uid;
+    if (!finalUID) {
+      console.error('No valid UID found in login process!');
+      throw new Error('Invalid login response - no UID found');
+    }
+    
+    console.log('Using final UID:', finalUID);
+    setUserUID(finalUID);
     setIsLoggedIn(true);
     
-    // Store only UID and notifications from login response
-    const minimalLoginData = {
-      uid: loginData.uid,
+    // Store UID in localStorage
+    localStorage.setItem('userUID', finalUID);
+    console.log('Stored userUID in localStorage:', finalUID);
+    
+    // Store UID, email, phone and notifications from login response
+    const loginDataWithProfile = {
+      uid: finalUID,
+      email: loginData.email || '',
+      phone: loginData.phone || '',
       notifications: loginData.notifications || []
     };
     
     // Store notifications from login response
-    if (minimalLoginData.notifications && Array.isArray(minimalLoginData.notifications)) {
-      console.log('Setting system notifications from login:', minimalLoginData.notifications);
+    if (loginDataWithProfile.notifications && Array.isArray(loginDataWithProfile.notifications)) {
+      console.log('Setting system notifications from login:', loginDataWithProfile.notifications);
       // Remove duplicates based on message and updated timestamp
-      const uniqueNotifications = minimalLoginData.notifications.filter((notification, index, self) =>
+      const uniqueNotifications = loginDataWithProfile.notifications.filter((notification, index, self) =>
         index === self.findIndex((n) => 
           n.message === notification.message && n.updated === notification.updated
         )
@@ -395,8 +415,21 @@ const Index = () => {
       setSystemNotifications(uniqueNotifications);
     }
 
-    // Store only the minimal login data
-    localStorage.setItem('userData', JSON.stringify(minimalLoginData));
+    // Store the login data with email and phone
+    localStorage.setItem('userData', JSON.stringify(loginDataWithProfile));
+    localStorage.setItem('isLoggedIn', 'true');
+    
+    // Create initial profile data from login response
+    const initialProfileData: ProfileData = {
+      uid: finalUID,
+      email: loginData.email || '',
+      phone: loginData.phone || '',
+      name: 'Loading...',
+      login: 'SUCCESSFUL'
+    };
+    
+    // Set initial profile data immediately
+    setProfileData(initialProfileData);
     
     // Initialize empty dashboard data
     const initialDashboardData: DashboardData = {
@@ -412,17 +445,23 @@ const Index = () => {
     setIsLoadingDashboard(true);
     
     try {
-      // Fetch profile data
-      const profileData = await fetchUserProfile(uid);
+      // Fetch complete profile data
+      const profileData = await fetchUserProfile(finalUID);
       if (!profileData) {
         throw new Error('Failed to fetch profile data');
       }
       
-      // Transform and store profile data
+      // Transform and merge with login data (preserving email and phone from login)
       const transformedProfileData = transformUserData(profileData);
-      console.log('Transformed profile data:', transformedProfileData);
-      setProfileData(transformedProfileData);
-      localStorage.setItem('profileData', JSON.stringify(transformedProfileData));
+      const mergedProfileData = {
+        ...transformedProfileData,
+        email: loginData.email || transformedProfileData.email || '',
+        phone: loginData.phone || transformedProfileData.phone || ''
+      };
+      
+      console.log('Merged profile data with login email/phone:', mergedProfileData);
+      setProfileData(mergedProfileData);
+      localStorage.setItem('profileData', JSON.stringify(mergedProfileData));
 
       // Fetch initial dashboard data
       await fetchTabData('recommendations');
@@ -441,6 +480,7 @@ const Index = () => {
     localStorage.removeItem('userUID');
     localStorage.removeItem('userData');
     localStorage.removeItem('profileData');
+    localStorage.removeItem('isLoggedIn');
     // Note: dashboardData is no longer cached so no need to remove it
     
     // Reset all state
@@ -454,13 +494,24 @@ const Index = () => {
 
   useEffect(() => {
     // Check for existing login state on app load
-    const storedUID = localStorage.getItem('userUID');
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const storedUserData = localStorage.getItem('userData');
     const storedProfileData = localStorage.getItem('profileData');
     // Note: dashboardData is no longer cached
     
-    if (storedUID) {
-      setUserUID(storedUID);
-      setIsLoggedIn(true);
+    if (isLoggedIn && storedUserData) {
+      try {
+        const userData = JSON.parse(storedUserData);
+        console.log('Restoring user session with userData:', userData);
+        
+        // Ensure userUID is also stored in localStorage for consistency
+        if (userData.uid) {
+          localStorage.setItem('userUID', userData.uid);
+          console.log('Restored userUID to localStorage:', userData.uid);
+        }
+        
+        setUserUID(userData.uid);
+        setIsLoggedIn(true);
       
       // Load cached profile data if available
       if (storedProfileData) {
@@ -472,9 +523,10 @@ const Index = () => {
           console.error('Error parsing cached profile data:', error);
         }
       }
-      
-      // Dashboard data will be loaded fresh when needed
-      console.log('Dashboard data will be loaded fresh on demand');
+      } catch (error) {
+        console.error('Error parsing stored user data:', error);
+        handleLogout(); // Clear invalid data
+      }
     }
     setIsLoading(false);
   }, []);
@@ -507,7 +559,7 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
       <Routes>
         <Route 
           path="/login" 
@@ -579,6 +631,14 @@ const Index = () => {
           element={
             isLoggedIn ? 
             <Awaiting /> : 
+            <Navigate to="/login" />
+          } 
+        />
+        <Route 
+          path="/chat/:uid" 
+          element={
+            isLoggedIn ? 
+            <Chat /> : 
             <Navigate to="/login" />
           } 
         />

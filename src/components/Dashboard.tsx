@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin } from "lucide-react";
+import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin, MessageCircle } from "lucide-react";
 import { config } from "../config/api";
 import { S3_CONFIG } from "../config/s3";
 import UserActions from "./UserActions";
@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ChatWithDestiny from "./ChatWithDestiny";
 import React from "react";
 import { User as UserType, Notification } from "../types";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { getSignedS3Url, extractS3Key } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,17 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set());
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [isWaitingForUser, setIsWaitingForUser] = useState(false);
+  const [isInitialResponse, setIsInitialResponse] = useState(false);
+  const [isPreferenceChat, setIsPreferenceChat] = useState(false);
+  const chatHistoryRef = useRef<HTMLDivElement>(null);
+
+  // Effect to scroll to bottom when chat history changes
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+    }
+  }, [chatHistory]);
 
   // Fetch profile data for a recommendation card
   const fetchProfileData = async (uid: string) => {
@@ -255,7 +266,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     // Check if user has dismissed or completed the chat
     const hasDismissed = sessionStorage.getItem('destinyChatDismissed');
     const hasCompleted = sessionStorage.getItem('destinyChatCompleted');
-    
+      
     if (!hasDismissed && !hasCompleted && userUID) {
       console.log('Setting up chat timer with UID:', userUID);
       // Generate random delay between 20 and 70 seconds
@@ -272,13 +283,15 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               'Origin': 'http://localhost:8080'
             }
           });
-
+          
           if (response.ok) {
             const data = await response.json();
             console.log('Chat initiated successfully:', data);
             setChatMessage(data.message);
-            setChatHistory(data.history || []);
-            setShowChat(true);
+            // Initialize chat history with the first message
+            setChatHistory([{ text: data.message, isUser: false }]);
+        setShowChat(true);
+            setIsInitialResponse(true);
           } else {
             console.error('Failed to initiate chat:', response.status);
           }
@@ -286,7 +299,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           console.error('Error initiating chat:', error);
         }
       }, randomDelay);
-
+      
       return () => clearTimeout(timer);
     }
   }, [userUID]);
@@ -385,7 +398,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
 
   const totalNotificationCount = messages.length + systemNotifications.length;
 
-  const UserCard = React.forwardRef<HTMLDivElement, { user: RecommendationCard }>(({ user }, ref) => {
+  const UserCard = React.forwardRef<HTMLDivElement, { user: RecommendationCard; queue?: string }>(({ user, queue }, ref) => {
     const [isLoading, setIsLoading] = useState(false);
     const [showPhotos, setShowPhotos] = useState(false);
     const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -522,52 +535,177 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               </div>
 
               <div className="flex justify-center items-center gap-6 mt-6">
-                <div className="relative group">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                  {user.user_align ? (
-                    <div className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-emerald-300" />
-                    </div>
-                  ) : (
-                    <Button
-                      onClick={e => { e.stopPropagation(); handleAction('align'); }}
-                      variant="outline"
-                      size="lg"
-                      disabled={isLoading}
-                      className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
-                    >
-                      <Heart className="w-4 h-4 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
-                    </Button>
-                  )}
-                  <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
-                    {user.user_align ? 'Waiting' : 'Align'}
-                  </span>
-                </div>
+                {queue === 'awaiting' ? (
+                  // Awaiting queue logic: show align and skip buttons if user_align is false, waiting icon and skip if true
+                  user.user_align ? (
+                    // Show waiting icon and skip button when user has already aligned
+                    <>
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <div className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 text-white/80 transition-all duration-300 shadow-2xl flex items-center justify-center">
+                          <Clock className="w-4 h-4 animate-pulse" />
+                        </div>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Waiting
+                        </span>
+                      </div>
 
-                <div className="relative group">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                  <Button
-                    onClick={e => { e.stopPropagation(); handleAction('skip'); }}
-                    variant="outline"
-                    size="lg"
-                    disabled={isLoading}
-                    className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
-                  >
-                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
-                  </Button>
-                  <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
-                    Skip
-                  </span>
-                </div>
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <Button
+                          onClick={e => { e.stopPropagation(); handleAction('skip'); }}
+                          variant="outline"
+                          size="lg"
+                          disabled={isLoading}
+                          className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                        >
+                          <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                        </Button>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Skip
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    // Show align and skip buttons when user hasn't aligned yet
+                    <>
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <Button
+                          onClick={e => { e.stopPropagation(); handleAction('align'); }}
+                          variant="outline"
+                          size="lg"
+                          disabled={isLoading}
+                          className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                        >
+                          <Heart className="w-4 h-4 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
+                        </Button>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Align
+                        </span>
+                      </div>
+
+                      <div className="relative group">
+                        <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                        <Button
+                          onClick={e => { e.stopPropagation(); handleAction('skip'); }}
+                          variant="outline"
+                          size="lg"
+                          disabled={isLoading}
+                          className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                        >
+                          <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                        </Button>
+                        <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                          Skip
+                        </span>
+                      </div>
+                    </>
+                  )
+                ) : user.user_align ? (
+                  // Show chat and block buttons for matched users (non-awaiting queues)
+                  <>
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { 
+                          e.stopPropagation(); 
+                          navigate(`/chat/${user.recommendation_uid}`, {
+                            state: {
+                              userName: user.name,
+                              userProfilePicture: profileImage
+                            }
+                          });
+                        }}
+                        variant="outline"
+                        size="lg"
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                      >
+                        <MessageCircle className="w-4 h-4 group-hover:scale-110 transition-all duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Chat
+                      </span>
+                    </div>
+
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { 
+                          e.stopPropagation(); 
+                          // TODO: Implement block functionality
+                          console.log('Block user:', user.recommendation_uid);
+                        }}
+                        variant="outline"
+                        size="lg"
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                      >
+                        <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Block
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  // Show align and skip buttons for non-matched users
+                  <>
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { e.stopPropagation(); handleAction('align'); }}
+                        variant="outline"
+                        size="lg"
+                        disabled={isLoading}
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-emerald-400/50 text-white/80 hover:text-emerald-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-emerald-500/25 group-hover:bg-gradient-to-r group-hover:from-emerald-500/10 group-hover:to-green-500/10"
+                      >
+                        <Heart className="w-4 h-4 group-hover:scale-110 group-hover:fill-current transition-all duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Align
+                      </span>
+                    </div>
+
+                    <div className="relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
+                      <Button
+                        onClick={e => { e.stopPropagation(); handleAction('skip'); }}
+                        variant="outline"
+                        size="lg"
+                        disabled={isLoading}
+                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                      >
+                        <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                      </Button>
+                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                        Skip
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
         <Dialog open={showPhotos} onOpenChange={setShowPhotos}>
-          <DialogContent className="max-w-lg bg-purple-950/30 backdrop-blur-xl border-white/20 [&>button]:hidden">
+          <DialogContent 
+            className="max-w-lg bg-white/5 backdrop-blur-xl border border-white/10 [&>button]:hidden overflow-hidden"
+            style={{
+              backgroundImage: 'url(/chat_background.jpeg)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat'
+            }}
+          >
+            {/* Background overlay for better content readability */}
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
+            
             <DialogTitle className="sr-only">User Profile Photos</DialogTitle>
-            <div className="absolute right-4 top-4">
+            <DialogDescription className="sr-only">
+              View and browse through user's profile photos
+            </DialogDescription>
+            <div className="absolute right-4 top-4 z-10">
               <Button
                 variant="ghost"
                 size="icon"
@@ -578,7 +716,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                 <span className="sr-only">Close</span>
               </Button>
             </div>
-            <div className="flex flex-col gap-6 pt-4">
+            <div className="flex flex-col gap-6 pt-4 relative z-10">
               <div className="flex items-start gap-4">
                 <Avatar className="w-20 h-20 ring-2 ring-white/20">
                   {profileImage ? (
@@ -667,9 +805,49 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     </div>
   );
 
-  const handleChatResponse = async (userInput: string) => {
+  const handlePreferenceChat = async () => {
+    if (!userUID) return;
+    
     try {
-      const response = await fetch('https://lovebhagya.com/chat:continue', {
+      const response = await fetch('https://lovebhagya.com/chat/preference:continue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': 'http://localhost:8080'
+        },
+        body: JSON.stringify({
+          uid: userUID
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Preference chat initiated successfully:', data);
+        setChatMessage(data.message);
+        setChatHistory(data.history || []);
+        setShowChat(true);
+        setIsPreferenceChat(true);
+      } else {
+        console.error('Failed to initiate preference chat:', response.status);
+      }
+    } catch (error) {
+      console.error('Error initiating preference chat:', error);
+    }
+  };
+
+  const handleChatResponse = async (userInput: string) => {
+    if (!userUID) return;
+    
+    try {
+      let endpoint = 'chat/initiate:continue';
+      if (isPreferenceChat) {
+        endpoint = 'chat/preference:continue';
+      } else if (isInitialResponse) {
+        endpoint = 'chat/initiate:continue';
+      }
+      
+      const response = await fetch(`https://lovebhagya.com/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -688,10 +866,18 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
           setChatMessage(data.message);
-          setChatHistory(data.history || []);
+          // Add user message and response to chat history
+          setChatHistory(prevHistory => [
+            ...prevHistory,
+            { text: userInput, isUser: true },
+            { text: data.message, isUser: false }
+          ]);
+          setIsInitialResponse(false);
           
-          // Check if chat should end
-          if (!data.continue) {
+          if (data.continue) {
+            setIsWaitingForUser(true);
+            // Don't automatically continue - wait for user to click send
+          } else {
             // Show final message for 2 seconds then close
             setTimeout(() => {
               setShowChat(false);
@@ -707,10 +893,43 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     }
   };
 
+  const handleChatExit = async () => {
+    if (userUID) {
+      try {
+        // Determine if this is a preference chat by checking if the chat was initiated by preference button
+        const isPreferenceChatExit = showChatWindow;
+        const endpoint = isPreferenceChatExit ? 'chat/preference:continue' : 'chat/initiate:continue';
+        
+        const response = await fetch(`https://lovebhagya.com/${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Origin': 'http://localhost:8080'
+          },
+          body: JSON.stringify({
+            uid: userUID,
+            user_input: "exit",
+            history: chatHistory
+          })
+        });
+        
+        if (response.ok) {
+          console.log('Chat exit handled successfully');
+        }
+      } catch (error) {
+        console.error('Error handling chat exit:', error);
+      }
+    }
+    setShowChat(false);
+    setShowChatWindow(false);
+    sessionStorage.setItem('destinyChatDismissed', 'true');
+  };
+
   if (selectedUser) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="max-w-4xl mx-auto px-6 py-8">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
+        <div className="container mx-auto px-4 py-8">
           <ProfileView user={selectedUser as unknown as UserType} onBack={handleBackToList}>
             <UserActions 
               userUID={selectedUser.recommendation_uid} 
@@ -724,7 +943,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
+      <div className="w-full max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between">
@@ -870,6 +1090,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                         <UserCard 
                           key={`recommendation-${user.recommendation_uid}`} 
                           user={user} 
+                          queue="recommendations"
                         />
                       ))}
                     </AnimatePresence>
@@ -920,7 +1141,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       {awaiting.map((user) => (
-                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} />
+                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} queue="awaiting" />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -970,7 +1191,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
                       {matches.map((user) => (
-                        <UserCard key={`match-${user.recommendation_uid}`} user={user} />
+                        <UserCard key={`match-${user.recommendation_uid}`} user={user} queue="matches" />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -988,74 +1209,85 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       </div>
 
       {showChat && userUID && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="bg-white rounded-lg shadow-xl w-80 sm:w-96 mb-4 border border-indigo-100"
-          >
-            <div className="p-4 border-b flex justify-between items-center bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-t-lg">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  <span className="text-lg font-['Lavanderia']">D</span>
+          <div className="fixed bottom-6 right-6 z-50">
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="bg-white rounded-lg shadow-xl w-80 sm:w-96 mb-4 border border-indigo-100 flex flex-col max-h-[80vh]"
+            >
+              <div className="p-4 border-b flex justify-between items-center bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-t-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                    <span className="text-lg font-['Lavanderia']">D</span>
+                  </div>
+                  <h3 className="font-['Lavanderia'] text-2xl">Destiny</h3>
                 </div>
-                <h3 className="font-['Lavanderia'] text-2xl">Destiny</h3>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  setShowChat(false);
-                  sessionStorage.setItem('destinyChatDismissed', 'true');
-                }}
-                className="h-8 w-8 hover:bg-indigo-500/20 text-white"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="p-4">
-              <div className="bg-indigo-50 rounded-lg p-3 mb-4">
-                <p className="text-gray-700 text-sm">{chatMessage}</p>
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Type your response..."
-                  className="flex-1 text-sm border-indigo-100 focus:border-indigo-300 text-gray-900 placeholder:text-gray-500"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleChatResponse(e.currentTarget.value);
-                      e.currentTarget.value = '';
-                    }
-                  }}
-                />
                 <Button
-                  onClick={() => {
-                    const input = document.querySelector('input');
-                    if (input) {
-                      handleChatResponse(input.value);
-                      input.value = '';
-                    }
-                  }}
-                  className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-4"
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleChatExit}
+                  className="h-8 w-8 hover:bg-indigo-500/20 text-white"
                 >
-                  Send
+                  <X className="h-5 w-5" />
                 </Button>
               </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+              <div ref={chatHistoryRef} className="flex-1 overflow-y-auto scroll-smooth p-4 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                {chatHistory.map((message, index) => (
+                  <div 
+                    key={index} 
+                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] rounded-lg p-3 ${
+                      message.isUser 
+                        ? 'bg-indigo-600 text-white' 
+                        : 'bg-indigo-50 text-gray-700'
+                    }`}>
+                      <p className="text-sm">{message.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Type your response..."
+                    className="flex-1 text-sm border-indigo-100 focus:border-indigo-300 text-gray-900 placeholder:text-gray-500"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleChatResponse(e.currentTarget.value);
+                        e.currentTarget.value = '';
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = document.querySelector('input');
+                      if (input) {
+                        handleChatResponse(input.value);
+                        input.value = '';
+                      }
+                    }}
+                    className="bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-4"
+                  >
+                    Send
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
 
-      <div className="fixed bottom-6 right-6 z-40">
+        <div className="fixed bottom-6 right-6 z-40">
         <ChatWithDestiny 
-          userUID={userUID} 
+          userUID={userUID}
           onClose={() => {
-            setShowChatWindow(false);
+              setShowChatWindow(false);
           }}
-          showChatWindow={showChatWindow}
+            showChatWindow={showChatWindow}
         />
+        </div>
       </div>
     </div>
   );
