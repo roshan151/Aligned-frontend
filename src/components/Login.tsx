@@ -138,9 +138,13 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
       <Card className="relative z-10 w-full max-w-md">
         <CardHeader className="text-center space-y-6">
           <div className="relative mx-auto">
-            <div className="absolute -inset-2 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full blur opacity-30"></div>
-            <div className="relative w-16 h-16 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full flex items-center justify-center shadow-2xl">
-              <Heart className="w-8 h-8 text-white" />
+            <div className="absolute -inset-4 bg-gradient-to-r from-violet-500 to-purple-500 rounded-2xl blur opacity-20"></div>
+            <div className="relative w-20 h-20 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-2xl border border-white/20 overflow-hidden">
+              <img 
+                src="/logo.png" 
+                alt="Aligned Logo" 
+                className="w-18 h-18 object-cover scale-110"
+              />
             </div>
           </div>
           <div>

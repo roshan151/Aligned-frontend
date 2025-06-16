@@ -692,7 +692,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           <DialogContent 
             className="max-w-lg bg-white/5 backdrop-blur-xl border border-white/10 [&>button]:hidden overflow-hidden"
             style={{
-              backgroundImage: 'url(/chat_background.jpeg)',
+              backgroundImage: 'url(/content_background.png)',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat'
@@ -705,16 +705,19 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             <DialogDescription className="sr-only">
               View and browse through user's profile photos
             </DialogDescription>
-            <div className="absolute right-4 top-4 z-10">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full bg-white/5 backdrop-blur-xl border border-white/10 text-white/80 hover:bg-white/10 hover:text-white transition-all duration-300"
-                onClick={() => setShowPhotos(false)}
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Close</span>
-              </Button>
+            <div className="absolute right-4 top-4 z-50">
+              <div className="relative group p-1">
+                <div className="absolute -inset-2 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none"></div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-10 w-10 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10 cursor-pointer"
+                  onClick={() => setShowPhotos(false)}
+                >
+                  <X className="h-5 w-5 group-hover:rotate-90 transition-transform duration-300" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col gap-6 pt-4 relative z-10">
               <div className="flex items-start gap-4">

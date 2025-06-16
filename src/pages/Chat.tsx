@@ -966,21 +966,23 @@ const Chat = () => {
 
       {/* Chat Messages */}
       <div className="relative z-10 max-w-3xl mx-auto px-6 py-8">
-        <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-          <CardContent className="p-6">
+        <Card 
+          className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden relative"
+          style={{
+            backgroundImage: 'url(/chat_background.png)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center bottom',
+            backgroundRepeat: 'no-repeat',
+            backgroundAttachment: 'scroll'
+          }}
+        >
+          {/* Background overlay for better content readability */}
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"></div>
+          <CardContent className="p-6 relative z-10">
             <div 
               ref={messagesContainerRef}
               className="space-y-4 h-[calc(100vh-300px)] overflow-y-auto scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] relative"
-              style={{
-                backgroundImage: 'url(/chat_background.jpeg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-                backgroundAttachment: 'local'
-              }}
             >
-              {/* Background overlay for better text readability */}
-              <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"></div>
               {messages.map((message, index) => (
                 <div
                   key={`${message.sid}-${index}-${message.timestamp.getTime()}`}

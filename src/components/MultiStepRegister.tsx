@@ -576,8 +576,15 @@ const MultiStepRegister = () => {
       <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-violet-600 to-purple-800 opacity-70"></div>
       <Card className="relative z-10 w-full max-w-4xl bg-white/10 backdrop-blur-md shadow-lg border-white/20">
         <CardHeader className="text-center space-y-4 px-6">
-          <div className="mx-auto w-12 h-12 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full flex items-center justify-center">
-            <Heart className="w-6 h-6 text-white" />
+          <div className="relative mx-auto">
+            <div className="absolute -inset-4 bg-gradient-to-r from-violet-500 to-purple-500 rounded-2xl blur opacity-20"></div>
+            <div className="relative w-20 h-20 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-2xl border border-white/20 overflow-hidden">
+              <img 
+                src="/logo.png" 
+                alt="Aligned Logo" 
+                className="w-18 h-18 object-cover scale-110"
+              />
+            </div>
           </div>
           <div>
             <CardTitle className="text-2xl font-semibold text-white">
