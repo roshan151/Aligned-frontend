@@ -563,8 +563,18 @@ const MultiStepRegister = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-violet-600 to-purple-800 flex items-center justify-center p-4">
-      <Card className="w-full max-w-4xl bg-white/10 backdrop-blur-md shadow-lg border-white/20">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-purple-600 via-violet-600 to-purple-800 flex items-center justify-center p-4"
+      style={{
+        backgroundImage: 'url(/login_page_bg.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }}
+    >
+      {/* Background overlay for better content readability */}
+      <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-violet-600 to-purple-800 opacity-70"></div>
+      <Card className="relative z-10 w-full max-w-4xl bg-white/10 backdrop-blur-md shadow-lg border-white/20">
         <CardHeader className="text-center space-y-4 px-6">
           <div className="mx-auto w-12 h-12 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full flex items-center justify-center">
             <Heart className="w-6 h-6 text-white" />
