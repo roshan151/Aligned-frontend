@@ -6,13 +6,13 @@ import { config } from "../config/api";
 interface UserActionsProps {
   userUID: string;
   currentUserUID: string | null;
-  onActionComplete?: (action: 'skip' | 'align', queue?: string, message?: string) => void;
+  onActionComplete?: (action: 'skip' | 'align' | 'block', queue?: string, message?: string, responseData?: any) => void;
 }
 
 const UserActions = ({ userUID, currentUserUID, onActionComplete }: UserActionsProps) => {
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleAction = async (actionType: 'skip' | 'align') => {
+  const handleAction = async (actionType: 'skip' | 'align' | 'block') => {
     if (!currentUserUID) return;
     
     setIsLoading(true);
@@ -40,8 +40,8 @@ const UserActions = ({ userUID, currentUserUID, onActionComplete }: UserActionsP
           const queue = data.queue;
           const message = data.message;
           
-          // Call parent callback with action type, queue and message info
-          onActionComplete?.(actionType, queue, message);
+          // Call parent callback with action type, queue, message and response data
+          onActionComplete?.(actionType, queue, message, data);
         } else {
           console.error('API error:', data.error);
         }

@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Send, User, Paperclip, X, Image as ImageIcon } from "lucide-react";
 import { config } from "../config/api";
 import { Client as ConversationsClient } from '@twilio/conversations';
+import { useS3Assets } from "../hooks/useS3Assets";
 
 interface Message {
   sid: string;
@@ -32,6 +33,7 @@ const Chat = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { assets } = useS3Assets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [chatClient, setChatClient] = useState<any>(null);
@@ -135,15 +137,22 @@ const Chat = () => {
     }
   };
 
+  const [isBlocked, setIsBlocked] = useState(false);
+
   useEffect(() => {
     // First, try to use cached data from navigation state
-    const cachedUserData = location.state as { userName?: string; userProfilePicture?: string } | null;
+    const cachedUserData = location.state as { userName?: string; userProfilePicture?: string; isBlocked?: boolean } | null;
     
     if (cachedUserData?.userName) {
       setUserInfo({
         name: cachedUserData.userName,
         profilePicture: cachedUserData.userProfilePicture || null
       });
+    }
+
+    // Set blocked status from navigation state
+    if (cachedUserData?.isBlocked !== undefined) {
+      setIsBlocked(cachedUserData.isBlocked);
     }
 
     const fetchUserProfile = async () => {
@@ -966,21 +975,23 @@ const Chat = () => {
 
       {/* Chat Messages */}
       <div className="relative z-10 max-w-3xl mx-auto px-6 py-8">
-        <Card className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
-          <CardContent className="p-6">
+        <Card 
+          className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden relative"
+          style={{
+            backgroundImage: assets.chatBackground ? `url(${assets.chatBackground})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center bottom',
+            backgroundRepeat: 'no-repeat',
+            backgroundAttachment: 'scroll'
+          }}
+        >
+          {/* Background overlay for better content readability */}
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"></div>
+          <CardContent className="p-6 relative z-10">
             <div 
               ref={messagesContainerRef}
               className="space-y-4 h-[calc(100vh-300px)] overflow-y-auto scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] relative"
-              style={{
-                backgroundImage: 'url(/chat_background.jpeg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-                backgroundAttachment: 'local'
-              }}
             >
-              {/* Background overlay for better text readability */}
-              <div className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"></div>
               {messages.map((message, index) => (
                 <div
                   key={`${message.sid}-${index}-${message.timestamp.getTime()}`}
@@ -1158,7 +1169,13 @@ const Chat = () => {
                 onClick={handleAttachClick}
                 variant="outline"
                 size="sm"
-                className="bg-white/5 text-white/80 hover:bg-white/10 hover:text-white border-white/10 flex-shrink-0 w-10 h-10 p-0"
+                disabled={isBlocked}
+                className={`border-white/10 flex-shrink-0 w-10 h-10 p-0 ${
+                  isBlocked 
+                    ? "bg-gray-500/20 text-gray-400 cursor-not-allowed" 
+                    : "bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
+                }`}
+                title={isBlocked ? "This user has been blocked" : "Attach file"}
               >
                 <Paperclip className="w-4 h-4" />
               </Button>
@@ -1167,15 +1184,25 @@ const Chat = () => {
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type a message..."
-                className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/90 placeholder:text-white/40 focus:outline-none focus:border-blue-500/50 text-sm"
+                placeholder={isBlocked ? "This user has been blocked" : "Type a message..."}
+                disabled={isBlocked}
+                className={`flex-1 min-w-0 border border-white/10 rounded-lg px-3 py-2 text-sm ${
+                  isBlocked 
+                    ? "bg-gray-500/20 text-gray-400 placeholder:text-gray-500 cursor-not-allowed" 
+                    : "bg-white/5 text-white/90 placeholder:text-white/40 focus:outline-none focus:border-blue-500/50"
+                }`}
               />
               <Button
                 onClick={handleSendMessage}
                 variant="outline"
                 size="sm"
-                disabled={isSending}
-                className="bg-blue-500/20 text-blue-100 hover:bg-blue-500/30 hover:text-blue-100 flex-shrink-0 w-10 h-10 p-0"
+                disabled={isSending || isBlocked}
+                className={`flex-shrink-0 w-10 h-10 p-0 ${
+                  isBlocked 
+                    ? "bg-red-500/20 text-red-100 hover:bg-red-500/30 cursor-not-allowed" 
+                    : "bg-blue-500/20 text-blue-100 hover:bg-blue-500/30 hover:text-blue-100"
+                }`}
+                title={isBlocked ? "This user has been blocked" : "Send message"}
               >
                 {isSending ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-100"></div>

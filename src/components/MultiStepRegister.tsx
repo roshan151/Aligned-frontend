@@ -14,7 +14,9 @@ import { cn } from "@/lib/utils";
 import { config } from "../config/api";
 import ImageUpload from "./ImageUpload";
 import DateRoller from "./DateRoller";
+import AutocompleteInput from "./AutocompleteInput";
 import { countries, getCitiesForCountry } from "../data/locations";
+import { useS3Assets } from "../hooks/useS3Assets";
 
 const hobbiesOptions = [
   "Reading", "Traveling", "Cooking", "Sports", "Music", "Movies", 
@@ -33,6 +35,7 @@ const steps = [
 const MultiStepRegister = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
+  const { assets } = useS3Assets();
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -337,49 +340,24 @@ const MultiStepRegister = () => {
         return (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="country" className="text-sm font-medium text-white">Country *</Label>
-                <Select value={formData.country} onValueChange={(value) => handleInputChange('country', value)}>
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder="Select your country" className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {countries.map((country) => (
-                      <SelectItem 
-                        key={country} 
-                        value={country} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {country}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="Country"
+                placeholder="Type to search countries..."
+                options={countries}
+                value={formData.country}
+                onChange={(value) => handleInputChange('country', value)}
+                required={true}
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="city" className="text-sm font-medium text-white">City *</Label>
-                <Select 
-                  value={formData.city} 
-                  onValueChange={(value) => handleInputChange('city', value)}
-                  disabled={!formData.country}
-                >
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder={formData.country ? "Select your city" : "Select country first"} className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {availableCities.map((city) => (
-                      <SelectItem 
-                        key={city} 
-                        value={city} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="City"
+                placeholder={formData.country ? "Type to search cities..." : "Select country first"}
+                options={availableCities}
+                value={formData.city}
+                onChange={(value) => handleInputChange('city', value)}
+                disabled={!formData.country}
+                required={true}
+              />
             </div>
 
             <div className="space-y-2">
@@ -400,49 +378,24 @@ const MultiStepRegister = () => {
         return (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="birth_country" className="text-sm font-medium text-white">Country of Birth *</Label>
-                <Select value={formData.birth_country} onValueChange={(value) => handleInputChange('birth_country', value)}>
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder="Select country of birth" className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {countries.map((country) => (
-                      <SelectItem 
-                        key={country} 
-                        value={country} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {country}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="Country of Birth"
+                placeholder="Type to search countries..."
+                options={countries}
+                value={formData.birth_country}
+                onChange={(value) => handleInputChange('birth_country', value)}
+                required={true}
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="birth_city" className="text-sm font-medium text-white">City of Birth *</Label>
-                <Select 
-                  value={formData.birth_city} 
-                  onValueChange={(value) => handleInputChange('birth_city', value)}
-                  disabled={!formData.birth_country}
-                >
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder={formData.birth_country ? "Select city of birth" : "Select country first"} className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {availableBirthCities.map((city) => (
-                      <SelectItem 
-                        key={city} 
-                        value={city} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="City of Birth"
+                placeholder={formData.birth_country ? "Type to search cities..." : "Select country first"}
+                options={availableBirthCities}
+                value={formData.birth_city}
+                onChange={(value) => handleInputChange('birth_city', value)}
+                disabled={!formData.birth_country}
+                required={true}
+              />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -566,7 +519,7 @@ const MultiStepRegister = () => {
     <div 
       className="min-h-screen bg-gradient-to-br from-purple-600 via-violet-600 to-purple-800 flex items-center justify-center p-4"
       style={{
-        backgroundImage: 'url(/login_page_bg.png)',
+        backgroundImage: assets.loginBackground ? `url(${assets.loginBackground})` : undefined,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat'
@@ -576,8 +529,19 @@ const MultiStepRegister = () => {
       <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-violet-600 to-purple-800 opacity-70"></div>
       <Card className="relative z-10 w-full max-w-4xl bg-white/10 backdrop-blur-md shadow-lg border-white/20">
         <CardHeader className="text-center space-y-4 px-6">
-          <div className="mx-auto w-12 h-12 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full flex items-center justify-center">
-            <Heart className="w-6 h-6 text-white" />
+          <div className="relative mx-auto">
+            <div className="absolute -inset-4 bg-gradient-to-r from-violet-500 to-purple-500 rounded-2xl blur opacity-20"></div>
+            <div className="relative w-20 h-20 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-2xl border border-white/20 overflow-hidden">
+              {assets.logo ? (
+                <img 
+                  src={assets.logo} 
+                  alt="Aligned Logo" 
+                  className="w-18 h-18 object-cover scale-110"
+                />
+              ) : (
+                <Heart className="w-6 h-6 text-white" />
+              )}
+            </div>
           </div>
           <div>
             <CardTitle className="text-2xl font-semibold text-white">

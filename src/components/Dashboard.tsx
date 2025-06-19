@@ -20,6 +20,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { getSignedS3Url, extractS3Key } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import { useS3Assets } from "../hooks/useS3Assets";
+import { useChatContext } from "../contexts/ChatContext";
 
 interface DashboardMessage {
   id: string;
@@ -46,10 +48,23 @@ interface RecommendationCard {
   country?: string;
   hobbies?: string;
   profession?: string;
+  blocked_by_match?: boolean;
+  blocked_by_user?: boolean;
 }
 
 const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: DashboardProps) => {
   const navigate = useNavigate();
+  const { assets } = useS3Assets();
+  const {
+    unifiedChatMessages,
+    setUnifiedChatMessages,
+    unifiedChatHistory,
+    setUnifiedChatHistory,
+    hasUserSentMessage,
+    setHasUserSentMessage,
+    chatHistoryRef
+  } = useChatContext();
+  
   const [matches, setMatches] = useState<RecommendationCard[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationCard[]>([]);
   const [awaiting, setAwaiting] = useState<RecommendationCard[]>([]);
@@ -66,21 +81,24 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   const [hasNewNotifications, setHasNewNotifications] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showChatWindow, setShowChatWindow] = useState(false);
-  const [activeTab, setActiveTab] = useState("recommendations");
+  const [activeTab, setActiveTab] = useState(() => {
+    // Restore last active tab from localStorage, default to "recommendations"
+    return localStorage.getItem('lastActiveTab') || "recommendations";
+  });
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set());
   const [chatMessage, setChatMessage] = useState("");
+
+  // Function to update active tab and save to localStorage
+  const updateActiveTab = (newTab: string) => {
+    setActiveTab(newTab);
+    localStorage.setItem('lastActiveTab', newTab);
+  };
+  
   const [chatHistory, setChatHistory] = useState<any[]>([]);
   const [isWaitingForUser, setIsWaitingForUser] = useState(false);
   const [isInitialResponse, setIsInitialResponse] = useState(false);
   const [isPreferenceChat, setIsPreferenceChat] = useState(false);
-  const chatHistoryRef = useRef<HTMLDivElement>(null);
-
-  // Effect to scroll to bottom when chat history changes
-  useEffect(() => {
-    if (chatHistoryRef.current) {
-      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
-    }
-  }, [chatHistory]);
+  const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
 
   // Fetch profile data for a recommendation card
   const fetchProfileData = async (uid: string) => {
@@ -205,7 +223,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               profession: profileData.PROFESSION || profileData.profession,
               hobbies: profileData.HOBBIES || profileData.hobbies,
               gender: profileData.GENDER || profileData.gender,
-              dob: profileData.DOB || profileData.dob
+              dob: profileData.DOB || profileData.dob,
+              blocked_by_match: card.blocked_by_match || false,
+              blocked_by_user: card.blocked_by_user || false
             };
             console.log(`Created enriched card:`, enrichedCard);
             return enrichedCard;
@@ -263,11 +283,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
 
   // Effect to initialize chat with destiny after a delay
   useEffect(() => {
-    // Check if user has dismissed or completed the chat
+    // Check if user has dismissed or completed the chat, or already sent a message
     const hasDismissed = sessionStorage.getItem('destinyChatDismissed');
     const hasCompleted = sessionStorage.getItem('destinyChatCompleted');
+    const hasUserChatted = sessionStorage.getItem('destinyUserHasChatted');
       
-    if (!hasDismissed && !hasCompleted && userUID) {
+    if (!hasDismissed && !hasCompleted && !hasUserChatted && !hasUserSentMessage && userUID) {
       console.log('Setting up chat timer with UID:', userUID);
       // Generate random delay between 20 and 70 seconds
       const randomDelay = Math.floor(Math.random() * (70000 - 20000) + 20000);
@@ -288,7 +309,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             const data = await response.json();
             console.log('Chat initiated successfully:', data);
             setChatMessage(data.message);
-            // Initialize chat history with the first message
+            // Initialize unified chat state with the first message
+            const initialMessage = { text: data.message, isUser: false, timestamp: new Date() };
+            setUnifiedChatMessages([initialMessage]);
             setChatHistory([{ text: data.message, isUser: false }]);
         setShowChat(true);
             setIsInitialResponse(true);
@@ -344,7 +367,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     setSelectedUser(null);
   };
 
-  const handleActionComplete = (action: 'skip' | 'align', queue?: string, message?: string) => {
+  const handleActionComplete = (action: 'skip' | 'align' | 'block', queue?: string, message?: string, responseData?: any) => {
     if (!selectedUser) return;
 
     const userUID = selectedUser.recommendation_uid;
@@ -357,6 +380,33 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     // Add message to notifications if present
     if (message && message !== 'None') {
       addMessage(message, selectedUser.name);
+    }
+
+    // For block action, handle based on API response and don't modify queues
+    if (action === 'block') {
+      setBlockedUsers(prev => {
+        const newSet = new Set(prev);
+        // Check if API response indicates user is blocked or unblocked
+        if (responseData && responseData.user_block !== undefined) {
+          if (responseData.user_block === false) {
+            // API says user is unblocked, remove from blocked set
+            newSet.delete(userUID);
+          } else if (responseData.user_block === true) {
+            // API says user is blocked, add to blocked set
+            newSet.add(userUID);
+          }
+        } else {
+          // Fallback to toggle behavior if user_block not in response
+          if (newSet.has(userUID)) {
+            newSet.delete(userUID);
+          } else {
+            newSet.add(userUID);
+          }
+        }
+        return newSet;
+      });
+      setSelectedUser(null);
+      return;
     }
 
     // Handle queue management
@@ -396,7 +446,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     }
   };
 
-  const totalNotificationCount = messages.length + systemNotifications.length;
+  // Count only new notifications for the badge
+  const newNotificationCount = systemNotifications.filter(notification => notification.isNew === true).length;
+  const totalNotificationCount = messages.length + newNotificationCount;
 
   const UserCard = React.forwardRef<HTMLDivElement, { user: RecommendationCard; queue?: string }>(({ user, queue }, ref) => {
     const [isLoading, setIsLoading] = useState(false);
@@ -415,7 +467,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       setShowPhotos(true);
     };
 
-    const handleAction = async (actionType: 'skip' | 'align') => {
+    const handleAction = async (actionType: 'skip' | 'align' | 'block') => {
       if (!userUID) return;
       
       setIsLoading(true);
@@ -446,7 +498,31 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               addMessage(message, user.name);
             }
 
-            // Remove user from all queues first
+            // For block action, handle based on API response
+            if (actionType === 'block') {
+              setBlockedUsers(prev => {
+                const newSet = new Set(prev);
+                // Check if API response indicates user is blocked or unblocked
+                if (data.user_block === false) {
+                  // API says user is unblocked, remove from blocked set
+                  newSet.delete(user.recommendation_uid);
+                } else if (data.user_block === true) {
+                  // API says user is blocked, add to blocked set
+                  newSet.add(user.recommendation_uid);
+                } else {
+                  // Fallback to toggle behavior if user_block not in response
+                  if (newSet.has(user.recommendation_uid)) {
+                    newSet.delete(user.recommendation_uid);
+                  } else {
+                    newSet.add(user.recommendation_uid);
+                  }
+                }
+                return newSet;
+              });
+              return;
+            }
+
+            // Remove user from all queues first (for skip and align actions)
             setRecommendations(prev => prev.filter(u => u.recommendation_uid !== user.recommendation_uid));
             setMatches(prev => prev.filter(u => u.recommendation_uid !== user.recommendation_uid));
             setAwaiting(prev => prev.filter(u => u.recommendation_uid !== user.recommendation_uid));
@@ -610,10 +686,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                       <Button
                         onClick={e => { 
                           e.stopPropagation(); 
+                          const isBlockedByEither = user.blocked_by_match || user.blocked_by_user || blockedUsers.has(user.recommendation_uid);
                           navigate(`/chat/${user.recommendation_uid}`, {
                             state: {
                               userName: user.name,
-                              userProfilePicture: profileImage
+                              userProfilePicture: profileImage,
+                              isBlocked: isBlockedByEither
                             }
                           });
                         }}
@@ -629,22 +707,54 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                     </div>
 
                     <div className="relative group">
-                      <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500"></div>
-                      <Button
-                        onClick={e => { 
-                          e.stopPropagation(); 
-                          // TODO: Implement block functionality
-                          console.log('Block user:', user.recommendation_uid);
-                        }}
-                        variant="outline"
-                        size="lg"
-                        className="relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
-                      >
-                        <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
-                      </Button>
-                      <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
-                        Block
-                      </span>
+                      {(() => {
+                        const isBlockedByMatch = user.blocked_by_match;
+                        const isBlockedByUser = user.blocked_by_user || blockedUsers.has(user.recommendation_uid);
+                        const canUnblock = isBlockedByUser && !isBlockedByMatch;
+                        const isBlocked = isBlockedByMatch || isBlockedByUser;
+                        
+                        return (
+                          <>
+                            <div className={`absolute -inset-1 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500 ${
+                              isBlocked
+                                ? canUnblock 
+                                  ? "bg-gradient-to-r from-green-500 to-emerald-500" 
+                                  : "bg-gradient-to-r from-gray-500 to-gray-600"
+                                : "bg-gradient-to-r from-red-500 to-pink-500"
+                            }`}></div>
+                            <Button
+                              onClick={e => { 
+                                e.stopPropagation(); 
+                                if (!isBlockedByMatch) {
+                                  handleAction('block');
+                                }
+                              }}
+                              variant="outline"
+                              size="lg"
+                              disabled={isLoading || isBlockedByMatch}
+                              className={`relative w-12 h-12 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 transition-all duration-300 shadow-2xl ${
+                                isBlockedByMatch
+                                  ? "cursor-not-allowed text-gray-400 border-gray-500/50"
+                                  : isBlockedByUser
+                                    ? "hover:scale-110 hover:border-green-400/50 text-white/80 hover:text-green-300 hover:shadow-green-500/25 group-hover:bg-gradient-to-r group-hover:from-green-500/10 group-hover:to-emerald-500/10"
+                                    : "hover:scale-110 hover:border-red-400/50 text-white/80 hover:text-red-300 hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10"
+                              }`}
+                              title={
+                                isBlockedByMatch 
+                                  ? "This user has blocked you - cannot unblock" 
+                                  : isBlockedByUser 
+                                    ? "Click to unblock this user" 
+                                    : "Click to block this user"
+                              }
+                            >
+                              <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                            </Button>
+                            <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-white/60 font-medium">
+                              {isBlockedByMatch ? "Blocked" : isBlockedByUser ? "Unblock" : "Block"}
+                            </span>
+                          </>
+                        );
+                      })()}
                     </div>
                   </>
                 ) : (
@@ -692,7 +802,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           <DialogContent 
             className="max-w-lg bg-white/5 backdrop-blur-xl border border-white/10 [&>button]:hidden overflow-hidden"
             style={{
-              backgroundImage: 'url(/chat_background.jpeg)',
+              backgroundImage: assets.contentBackground ? `url(${assets.contentBackground})` : undefined,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat'
@@ -705,16 +815,19 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             <DialogDescription className="sr-only">
               View and browse through user's profile photos
             </DialogDescription>
-            <div className="absolute right-4 top-4 z-10">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full bg-white/5 backdrop-blur-xl border border-white/10 text-white/80 hover:bg-white/10 hover:text-white transition-all duration-300"
-                onClick={() => setShowPhotos(false)}
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Close</span>
-              </Button>
+            <div className="absolute right-4 top-4 z-50">
+              <div className="relative group p-1">
+                <div className="absolute -inset-2 bg-gradient-to-r from-red-500 to-pink-500 rounded-full blur opacity-20 group-hover:opacity-40 transition duration-500 pointer-events-none"></div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-10 w-10 rounded-full bg-white/5 backdrop-blur-xl border-2 border-white/10 hover:border-red-400/50 text-white/80 hover:text-red-300 transition-all duration-300 hover:scale-110 shadow-2xl hover:shadow-red-500/25 group-hover:bg-gradient-to-r group-hover:from-red-500/10 group-hover:to-pink-500/10 cursor-pointer"
+                  onClick={() => setShowPhotos(false)}
+                >
+                  <X className="h-5 w-5 group-hover:rotate-90 transition-transform duration-300" />
+                  <span className="sr-only">Close</span>
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col gap-6 pt-4 relative z-10">
               <div className="flex items-start gap-4">
@@ -839,6 +952,14 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   const handleChatResponse = async (userInput: string) => {
     if (!userUID) return;
     
+    // Track that user has sent a message
+    setHasUserSentMessage(true);
+    sessionStorage.setItem('destinyUserHasChatted', 'true');
+    
+    // Add user message to unified chat state
+    const userMessage = { text: userInput, isUser: true, timestamp: new Date() };
+    setUnifiedChatMessages(prev => [...prev, userMessage]);
+    
     try {
       let endpoint = 'chat/initiate:continue';
       if (isPreferenceChat) {
@@ -866,6 +987,11 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
           setChatMessage(data.message);
+          
+          // Add response to unified chat state
+          const responseMessage = { text: data.message, isUser: false, timestamp: new Date() };
+          setUnifiedChatMessages(prev => [...prev, responseMessage]);
+          
           // Add user message and response to chat history
           setChatHistory(prevHistory => [
             ...prevHistory,
@@ -926,6 +1052,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     sessionStorage.setItem('destinyChatDismissed', 'true');
   };
 
+  // Callback for when user sends message in ChatWithDestiny
+  const handleUserSendMessage = () => {
+    setHasUserSentMessage(true);
+    sessionStorage.setItem('destinyUserHasChatted', 'true');
+  };
+
   if (selectedUser) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-x-hidden">
@@ -981,34 +1113,87 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                 </div>
                 <div className="max-h-96 overflow-y-auto p-4">
                   <div className="space-y-3">
-                    {systemNotifications.length > 0 && systemNotifications.map((notification, index) => (
-                      <div key={`system-${index}`} className="p-3 rounded-lg bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-white/10">
-                        <p className="text-white text-sm">{notification.message}</p>
-                        <p className="text-white/40 text-xs mt-1">
-                          {formatNotificationDate(notification.updated)}
-                        </p>
-                      </div>
-                    ))}
-                    
-                    {messages.length > 0 && messages.map((message) => (
-                      <div key={`message-${message.id}`} className="p-3 rounded-lg bg-white/5 border border-white/10">
-                        <p className="text-white text-sm">{message.text}</p>
-                        {message.userName && (
-                          <p className="text-white/60 text-xs mt-1">From: {message.userName}</p>
-                        )}
-                        <p className="text-white/40 text-xs mt-1">
-                          {formatDistanceToNow(message.timestamp, { addSuffix: true })}
-                        </p>
-                      </div>
-                    ))}
-                    
-                    {systemNotifications.length === 0 && messages.length === 0 && (
-                      <div className="text-center py-8">
-                        <Bell className="w-8 h-8 text-white/40 mx-auto mb-2" />
-                        <p className="text-white/60 text-sm">No notifications yet</p>
-                        <p className="text-white/40 text-xs mt-1">System updates will appear here</p>
-                      </div>
-                    )}
+                    {(() => {
+                      // Separate new and old system notifications
+                      const newSystemNotifications = systemNotifications.filter(n => n.isNew === true);
+                      const oldSystemNotifications = systemNotifications.filter(n => n.isNew !== true);
+                      
+                      // Combine all notifications in the desired order: messages, new notifications, old notifications
+                      const allNotifications = [
+                        // Map messages to a consistent format (always shown first)
+                        ...messages.map(message => ({
+                          id: message.id,
+                          text: message.text,
+                          timestamp: message.timestamp,
+                          userName: message.userName,
+                          isNew: false,
+                          type: 'message'
+                        })),
+                        // Map new system notifications (shown second, highlighted)
+                        ...newSystemNotifications.map((notification, index) => ({
+                          id: `new-system-${index}`,
+                          text: notification.message,
+                          timestamp: new Date(notification.updated),
+                          userName: undefined,
+                          isNew: true,
+                          type: 'system'
+                        })),
+                        // Map old system notifications (shown last, normal)
+                        ...oldSystemNotifications.map((notification, index) => ({
+                          id: `old-system-${index}`,
+                          text: notification.message,
+                          timestamp: new Date(notification.updated),
+                          userName: undefined,
+                          isNew: false,
+                          type: 'system'
+                        }))
+                      ];
+
+                      // Sort within each group by timestamp (newest first)
+                      const sortedNotifications = [
+                        ...allNotifications.filter(n => n.type === 'message').sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()),
+                        ...allNotifications.filter(n => n.type === 'system' && n.isNew).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()),
+                        ...allNotifications.filter(n => n.type === 'system' && !n.isNew).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                      ];
+
+                      return sortedNotifications.length > 0 ? (
+                        sortedNotifications.map((notification) => (
+                          <div 
+                            key={notification.id} 
+                            className={`p-3 rounded-lg border transition-all duration-200 ${
+                              notification.isNew 
+                                ? 'bg-gradient-to-r from-violet-500/20 to-purple-500/20 border-violet-400/30 shadow-lg shadow-violet-500/10' 
+                                : 'bg-white/5 border-white/10'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <p className="text-white text-sm">{notification.text}</p>
+                                {notification.userName && (
+                                  <p className="text-white/60 text-xs mt-1">From: {notification.userName}</p>
+                                )}
+                                <p className="text-white/40 text-xs mt-1">
+                                  {formatDistanceToNow(notification.timestamp, { addSuffix: true })}
+                                </p>
+                              </div>
+                              {notification.isNew && (
+                                <div className="flex-shrink-0 ml-2">
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-violet-500/20 text-violet-300 border border-violet-400/30">
+                                    New
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8">
+                          <Bell className="w-8 h-8 text-white/40 mx-auto mb-2" />
+                          <p className="text-white/60 text-sm">No notifications yet</p>
+                          <p className="text-white/40 text-xs mt-1">System updates will appear here</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </PopoverContent>
@@ -1027,7 +1212,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <Tabs defaultValue="recommendations" className="space-y-6 sm:space-y-8" onValueChange={setActiveTab}>
+        <Tabs value={activeTab} className="space-y-6 sm:space-y-8" onValueChange={updateActiveTab}>
           <TabsList className="grid w-full grid-cols-3 bg-white/5 backdrop-blur-xl border border-white/10 p-1 rounded-2xl">
             <TabsTrigger 
               value="recommendations" 
@@ -1085,15 +1270,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   </div>
                 ) : recommendations.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence mode="popLayout">
-                      {recommendations.map((user) => (
-                        <UserCard 
-                          key={`recommendation-${user.recommendation_uid}`} 
-                          user={user} 
-                          queue="recommendations"
-                        />
-                      ))}
-                    </AnimatePresence>
+                    {recommendations.map((user) => (
+                      <UserCard 
+                        key={`recommendation-${user.recommendation_uid}`} 
+                        user={user} 
+                        queue="recommendations"
+                      />
+                    ))}
                   </div>
                 ) : (
                   <EmptyState
@@ -1139,11 +1322,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   </div>
                 ) : awaiting.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence mode="popLayout">
-                      {awaiting.map((user) => (
-                        <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} queue="awaiting" />
-                      ))}
-                    </AnimatePresence>
+                    {awaiting.map((user) => (
+                      <UserCard key={`awaiting-${user.recommendation_uid}`} user={user} queue="awaiting" />
+                    ))}
                   </div>
                 ) : (
                   <EmptyState
@@ -1189,11 +1370,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   </div>
                 ) : matches.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <AnimatePresence mode="popLayout">
-                      {matches.map((user) => (
-                        <UserCard key={`match-${user.recommendation_uid}`} user={user} queue="matches" />
-                      ))}
-                    </AnimatePresence>
+                    {matches.map((user) => (
+                      <UserCard key={`match-${user.recommendation_uid}`} user={user} queue="matches" />
+                    ))}
                   </div>
                 ) : (
                   <EmptyState
@@ -1218,12 +1397,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               className="bg-white rounded-lg shadow-xl w-80 sm:w-96 mb-4 border border-indigo-100 flex flex-col max-h-[80vh]"
             >
               <div className="p-4 border-b flex justify-between items-center bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-t-lg">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                    <span className="text-lg font-['Lavanderia']">D</span>
-                  </div>
-                  <h3 className="font-['Lavanderia'] text-2xl">Destiny</h3>
-                </div>
+                <h3 className="font-['Lavanderia'] text-2xl">Destiny</h3>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1234,7 +1408,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                 </Button>
               </div>
               <div ref={chatHistoryRef} className="flex-1 overflow-y-auto scroll-smooth p-4 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                {chatHistory.map((message, index) => (
+                {unifiedChatMessages.map((message, index) => (
                   <div 
                     key={index} 
                     className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
@@ -1285,7 +1459,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           onClose={() => {
               setShowChatWindow(false);
           }}
-            showChatWindow={showChatWindow}
+          showChatWindow={showChatWindow}
+          onUserSendMessage={handleUserSendMessage}
         />
         </div>
       </div>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { config } from "../config/api";
+import { useChatContext } from "../contexts/ChatContext";
 
 interface Message {
   text: string;
@@ -16,21 +17,32 @@ interface ChatWithDestinyProps {
   userUID: string;
   onClose: () => void;
   showChatWindow: boolean;
+  onUserSendMessage?: () => void;
 }
 
-const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyProps) => {
+const ChatWithDestiny = ({ 
+  userUID, 
+  onClose, 
+  showChatWindow, 
+  onUserSendMessage 
+}: ChatWithDestinyProps) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [history, setHistory] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
   const chatHistoryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Scroll to bottom when new messages arrive
-    if (chatHistoryRef.current) {
-      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
-    }
+    const scrollToBottom = () => {
+      if (chatHistoryRef.current) {
+        chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+      }
+    };
+    
+    // Use setTimeout to ensure DOM has updated
+    setTimeout(scrollToBottom, 100);
   }, [messages]);
 
   useEffect(() => {
@@ -51,6 +63,11 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
     setMessages(prev => [...prev, userMessage]);
     setInputMessage("");
     setIsLoading(true);
+
+    // Notify parent that user has sent a message
+    if (onUserSendMessage) {
+      onUserSendMessage();
+    }
 
     try {
       const metadata = {
@@ -113,7 +130,11 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
   };
 
   const handleClose = () => {
-    // Send exit message to server
+    // Close the chat immediately
+    setIsChatOpen(false);
+    onClose();
+
+    // Send exit message to server in the background (don't wait for response)
     if (userUID) {
       fetch('https://lovebhagya.com/chat/preference:continue', {
         method: 'POST',
@@ -128,24 +149,10 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
           history: messages.map(m => m.text)
         })
       })
-      .then(() => {
-        // Clear messages and close chat
-        setMessages([]);
-        setIsChatOpen(false);
-        onClose();
-      })
       .catch(error => {
         console.error('Error handling chat exit:', error);
-        // Still close the chat even if the exit call fails
-        setMessages([]);
-        setIsChatOpen(false);
-        onClose();
+        // Error is logged but doesn't affect UI since chat is already closed
       });
-    } else {
-      // If no UID, just close the chat
-      setMessages([]);
-      setIsChatOpen(false);
-      onClose();
     }
   };
 
@@ -179,44 +186,45 @@ const ChatWithDestiny = ({ userUID, onClose, showChatWindow }: ChatWithDestinyPr
               </Button>
             </div>
             
-            <ScrollArea className="h-80 p-4">
-              <div ref={chatHistoryRef} className="space-y-4 min-h-[280px]">
-                {messages.length === 0 && (
-                  <div className="flex flex-col justify-center items-center h-[280px]">
-                    <p className="text-gray-500 text-lg font-medium">Lets talk!</p>
-                    <p className="text-gray-500 text-lg font-medium">About your</p>
-                    <p className="text-gray-500 text-lg font-medium">matches and preferences!</p>
-                  </div>
-                )}
-                <div className="flex-1 overflow-y-auto scroll-smooth p-4 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {messages.map((message, index) => (
-                    <div 
-                      key={index} 
-                      className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`max-w-[80%] rounded-lg p-3 ${
-                        message.isUser 
-                          ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white' 
-                          : 'bg-gray-100 text-gray-900'
-                      }`}>
-                        <p className="text-sm">{message.text}</p>
-                      </div>
-                    </div>
-                  ))}
+            <div 
+              ref={chatHistoryRef}
+              className="h-80 overflow-y-auto scroll-smooth p-4 space-y-4 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full"
+            >
+              {messages.length === 0 && (
+                <div className="flex flex-col justify-center items-center h-[280px]">
+                  <p className="text-gray-500 text-lg font-medium">Lets talk!</p>
+                  <p className="text-gray-500 text-lg font-medium">About your</p>
+                  <p className="text-gray-500 text-lg font-medium">matches and preferences!</p>
                 </div>
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 rounded-lg p-3 text-gray-900">
-                      <div className="flex space-x-2">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                      </div>
+              )}
+              {messages.map((message, index) => (
+                <div 
+                  key={index} 
+                  className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div className={`max-w-[80%] rounded-lg p-3 ${
+                    message.isUser 
+                      ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white' 
+                      : 'bg-gray-100 text-gray-900'
+                  }`}>
+                    <p className="text-sm">{message.text}</p>
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-lg p-3 text-gray-900">
+                    <div className="flex space-x-2">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
                   </div>
-                )}
-              </div>
-            </ScrollArea>
+                </div>
+              )}
+              {/* Invisible element to scroll to */}
+              <div className="h-1" />
+            </div>
 
             <div className="p-4 border-t">
               <div className="flex gap-2">

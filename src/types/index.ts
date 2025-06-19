@@ -21,6 +21,7 @@ export interface Notification {
   message: string;
   timestamp: string;
   updated: string;
+  isNew?: boolean;
 }
 
 export interface DashboardData {

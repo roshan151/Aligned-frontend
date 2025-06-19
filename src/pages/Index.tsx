@@ -400,20 +400,59 @@ const Index = () => {
       uid: finalUID,
       email: loginData.email || '',
       phone: loginData.phone || '',
+      newNotifications: loginData.newNotifications || [],
+      oldNotifications: loginData.oldNotifications || [],
+      // Keep backward compatibility
       notifications: loginData.notifications || []
     };
     
-    // Store notifications from login response
-    if (loginDataWithProfile.notifications && Array.isArray(loginDataWithProfile.notifications)) {
-      console.log('Setting system notifications from login:', loginDataWithProfile.notifications);
+    // Process notifications from login response
+    const processNotifications = () => {
+      const allNotifications = [];
+      
+      // Handle new API format
+      if (loginData.newNotifications && Array.isArray(loginData.newNotifications)) {
+        // Mark new notifications with isNew flag
+        const newNotifs = loginData.newNotifications.map(notification => ({
+          ...notification,
+          isNew: true
+        }));
+        allNotifications.push(...newNotifs);
+        console.log('Found new notifications:', newNotifs.length);
+      }
+      
+      if (loginData.oldNotifications && Array.isArray(loginData.oldNotifications)) {
+        // Mark old notifications with isNew: false
+        const oldNotifs = loginData.oldNotifications.map(notification => ({
+          ...notification,
+          isNew: false
+        }));
+        allNotifications.push(...oldNotifs);
+        console.log('Found old notifications:', oldNotifs.length);
+      }
+      
+      // Fallback to old format for backward compatibility
+      if (allNotifications.length === 0 && loginData.notifications && Array.isArray(loginData.notifications)) {
+        const legacyNotifs = loginData.notifications.map(notification => ({
+          ...notification,
+          isNew: false // Treat legacy notifications as old by default
+        }));
+        allNotifications.push(...legacyNotifs);
+        console.log('Using legacy notifications format:', legacyNotifs.length);
+      }
+      
       // Remove duplicates based on message and updated timestamp
-      const uniqueNotifications = loginDataWithProfile.notifications.filter((notification, index, self) =>
+      const uniqueNotifications = allNotifications.filter((notification, index, self) =>
         index === self.findIndex((n) => 
           n.message === notification.message && n.updated === notification.updated
         )
       );
+      
+      console.log('Setting system notifications from login:', uniqueNotifications);
       setSystemNotifications(uniqueNotifications);
-    }
+    };
+    
+    processNotifications();
 
     // Store the login data with email and phone
     localStorage.setItem('userData', JSON.stringify(loginDataWithProfile));
