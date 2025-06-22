@@ -1,6 +1,6 @@
 export const config = {
-  URL: 'https://lovebhagya.com',
-  PROFILE_URL: 'http://localhost:8080',
+  URL: import.meta.env.VITE_API_URL || 'http://localhost:8040',
+  PROFILE_URL: import.meta.env.VITE_PROFILE_API_URL || 'http://localhost:8080',
   MAX_IMAGES: 5,
   ENDPOINTS: {
     CREATE_ACCOUNT: '/account:create',
@@ -11,9 +11,13 @@ export const config = {
   }
 };
 
-// Configure fetch to work with HTTPS in production
+// Configure fetch to work with different environments
 if (import.meta.env.DEV) {
-  // For development, we'll handle CORS and HTTPS requests
-  console.log('Development mode: Using HTTPS backend at', config.URL);
+  // For development, we'll handle CORS and local requests
+  console.log('Development mode: Using backend at', config.URL);
+  console.log('Profile API at', config.PROFILE_URL);
+} else {
+  // Production mode
+  console.log('Production mode: Using backend at', config.URL);
   console.log('Profile API at', config.PROFILE_URL);
 }

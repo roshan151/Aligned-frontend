@@ -297,7 +297,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       const timer = setTimeout(async () => {
         try {
           console.log('Making chat:initiate call for UID:', userUID);
-          const response = await fetch(`https://lovebhagya.com/chat:initiate/${userUID}`, {
+          const response = await fetch(`http://localhost:8040/chat:initiate/${userUID}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -312,7 +312,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             // Initialize unified chat state with the first message
             const initialMessage = { text: data.message, isUser: false, timestamp: new Date() };
             setUnifiedChatMessages([initialMessage]);
-            setChatHistory([{ text: data.message, isUser: false }]);
+            setUnifiedChatHistory([{ text: data.message, isUser: false }]);
         setShowChat(true);
             setIsInitialResponse(true);
           } else {
@@ -922,7 +922,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     if (!userUID) return;
     
     try {
-      const response = await fetch('https://lovebhagya.com/chat/preference:continue', {
+      const response = await fetch('http://localhost:8040/chat/preference:continue', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -938,7 +938,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         const data = await response.json();
         console.log('Preference chat initiated successfully:', data);
         setChatMessage(data.message);
-        setChatHistory(data.history || []);
+        // Initialize unified chat state with the preference chat message
+        const initialMessage = { text: data.message, isUser: false, timestamp: new Date() };
+        setUnifiedChatMessages([initialMessage]);
+        setUnifiedChatHistory(data.history || []);
         setShowChat(true);
         setIsPreferenceChat(true);
       } else {
@@ -968,7 +971,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         endpoint = 'chat/initiate:continue';
       }
       
-      const response = await fetch(`https://lovebhagya.com/${endpoint}`, {
+      const response = await fetch(`http://localhost:8040/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -978,7 +981,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         body: JSON.stringify({
           uid: userUID,
           user_input: userInput,
-          history: chatHistory
+          history: unifiedChatHistory
         })
       });
 
@@ -992,8 +995,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           const responseMessage = { text: data.message, isUser: false, timestamp: new Date() };
           setUnifiedChatMessages(prev => [...prev, responseMessage]);
           
-          // Add user message and response to chat history
-          setChatHistory(prevHistory => [
+          // Add user message and response to unified chat history
+          setUnifiedChatHistory(prevHistory => [
             ...prevHistory,
             { text: userInput, isUser: true },
             { text: data.message, isUser: false }
@@ -1026,7 +1029,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         const isPreferenceChatExit = showChatWindow;
         const endpoint = isPreferenceChatExit ? 'chat/preference:continue' : 'chat/initiate:continue';
         
-        const response = await fetch(`https://lovebhagya.com/${endpoint}`, {
+        const response = await fetch(`http://localhost:8040/${endpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1036,7 +1039,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           body: JSON.stringify({
             uid: userUID,
             user_input: "exit",
-            history: chatHistory
+            history: unifiedChatHistory
           })
         });
         
@@ -1461,6 +1464,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           }}
           showChatWindow={showChatWindow}
           onUserSendMessage={handleUserSendMessage}
+          messages={unifiedChatMessages}
+          setMessages={setUnifiedChatMessages}
+          history={unifiedChatHistory}
+          setHistory={setUnifiedChatHistory}
         />
         </div>
       </div>

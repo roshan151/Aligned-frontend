@@ -18,19 +18,39 @@ interface ChatWithDestinyProps {
   onClose: () => void;
   showChatWindow: boolean;
   onUserSendMessage?: () => void;
+  messages?: Message[];
+  setMessages?: React.Dispatch<React.SetStateAction<Message[]>>;
+  history?: any[];
+  setHistory?: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 const ChatWithDestiny = ({ 
   userUID, 
   onClose, 
   showChatWindow, 
-  onUserSendMessage 
+  onUserSendMessage,
+  messages: propMessages,
+  setMessages: propSetMessages,
+  history: propHistory,
+  setHistory: propSetHistory
 }: ChatWithDestinyProps) => {
+  const { 
+    unifiedChatMessages, 
+    setUnifiedChatMessages, 
+    unifiedChatHistory, 
+    setUnifiedChatHistory 
+  } = useChatContext();
+  
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
+  
+  // Use shared state if provided, otherwise fall back to unified context
+  const messages = propMessages || unifiedChatMessages;
+  const setMessages = propSetMessages || setUnifiedChatMessages;
+  const history = propHistory || unifiedChatHistory;
+  const setHistory = propSetHistory || setUnifiedChatHistory;
+  
   const chatHistoryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,7 +96,7 @@ const ChatWithDestiny = ({
         history: history
       };
 
-      const response = await fetch("https://lovebhagya.com/chat/preference:continue", {
+      const response = await fetch("http://localhost:8040/chat/preference:continue", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -91,14 +111,23 @@ const ChatWithDestiny = ({
       const data = await response.json();
       
       if (data && data.message) {
-        setMessages(prev => [...prev, {
+        const responseMessage = {
           text: data.message,
           isUser: false,
           timestamp: new Date(),
-        }]);
+        };
+        
+        setMessages(prev => [...prev, responseMessage]);
 
         if (data.history) {
           setHistory(data.history);
+        } else {
+          // Update history with the conversation
+          setHistory(prev => [
+            ...prev,
+            { text: inputMessage, isUser: true },
+            { text: data.message, isUser: false }
+          ]);
         }
 
         // If this is the final message, mark chat as completed
@@ -136,7 +165,7 @@ const ChatWithDestiny = ({
 
     // Send exit message to server in the background (don't wait for response)
     if (userUID) {
-      fetch('https://lovebhagya.com/chat/preference:continue', {
+      fetch('http://localhost:8040/chat/preference:continue', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
