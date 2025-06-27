@@ -74,3 +74,5 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-trick
 
 docker build:
 docker build --platform linux/amd64 -t aligned-frontend-amd64:latest .
+
+Testing git push
