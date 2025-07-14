@@ -13,6 +13,7 @@ export interface User {
   images?: string[];
   kundliScore?: number;
   user_align?: boolean;
+  reason?: string;
 }
 
 export interface Notification {
@@ -49,4 +50,5 @@ export interface ProfileData {
   login?: string;
   kundliScore?: number;
   user_align?: boolean;
+  FILTERS?: string[]; // Added FILTERS field
 } 

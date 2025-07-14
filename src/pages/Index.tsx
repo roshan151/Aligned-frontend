@@ -110,6 +110,28 @@ const Index = () => {
       }
     }
 
+    // Handle FILTERS field
+    let filters: string[] = [];
+    if (data.FILTERS || data.filters) {
+      try {
+        const filtersData = data.FILTERS || data.filters;
+        if (Array.isArray(filtersData)) {
+          filters = filtersData;
+        } else if (typeof filtersData === 'string') {
+          // If it's a JSON string, parse it
+          if (filtersData.startsWith('[') || filtersData.startsWith('{')) {
+            filters = JSON.parse(filtersData);
+          } else {
+            // If it's comma-separated, split it
+            filters = filtersData.split(',').map((f: string) => f.trim());
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing FILTERS data:', error);
+        filters = [];
+      }
+    }
+
     let dob = '';
     if (data.DOB || data.dob) {
       try {
@@ -208,7 +230,8 @@ const Index = () => {
       hobbies: hobbies,
       images: images,
       login: data.LOGIN || data.login || '',
-      user_align: data.user_align || false
+      user_align: data.user_align || false,
+      FILTERS: filters // Added FILTERS field
     };
   };
 
@@ -224,6 +247,28 @@ const Index = () => {
         hobbies = typeof loginData.hobbies === 'string' 
           ? loginData.hobbies.split(',').map((h: string) => h.trim()) 
           : [];
+      }
+    }
+
+    // Handle FILTERS field from login data
+    let filters: string[] = [];
+    if (loginData.FILTERS || loginData.filters) {
+      try {
+        const filtersData = loginData.FILTERS || loginData.filters;
+        if (Array.isArray(filtersData)) {
+          filters = filtersData;
+        } else if (typeof filtersData === 'string') {
+          // If it's a JSON string, parse it
+          if (filtersData.startsWith('[') || filtersData.startsWith('{')) {
+            filters = JSON.parse(filtersData);
+          } else {
+            // If it's comma-separated, split it
+            filters = filtersData.split(',').map((f: string) => f.trim());
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing FILTERS data from login:', error);
+        filters = [];
       }
     }
 
@@ -318,7 +363,8 @@ const Index = () => {
       tob: '',
       hobbies: hobbies,
       images: images,
-      login: 'SUCCESSFUL'
+      login: 'SUCCESSFUL',
+      FILTERS: filters // Added FILTERS field
     };
   };
 

@@ -16,7 +16,8 @@ import {
   Globe,
   Star,
   Sparkles,
-  Phone
+  Phone,
+  Filter
 } from "lucide-react";
 import { getSignedS3Url, extractS3Key } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ interface ProfileData {
   hobbies?: string[];
   images?: string[];
   login?: string;
+  FILTERS?: string[]; // Added FILTERS field
 }
 
 interface ProfileProps {
@@ -458,27 +460,73 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                       {profileData.hobbies.map((hobby, index) => (
                         <Badge 
                           key={index} 
-                          className="px-4 py-3 rounded-full text-sm font-semibold bg-gradient-to-r from-violet-500/30 to-purple-500/30 text-white border-2 border-violet-400/50 hover:from-violet-500/40 hover:to-purple-500/40 hover:border-violet-400/70 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg backdrop-blur-xl"
+                          className="px-4 py-3 rounded-full text-sm font-bold bg-gradient-to-r from-blue-500/60 to-cyan-500/60 text-white border-2 border-blue-400/80 hover:from-blue-500/70 hover:to-cyan-500/70 hover:border-blue-400/90 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg backdrop-blur-xl"
                         >
                           {hobby}
                         </Badge>
                       ))}
                     </div>
-                    <div className="mt-6 p-4 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-xl border border-pink-400/30">
+                    <div className="mt-6 p-4 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-xl border border-blue-400/40">
                       <div className="flex items-center gap-2 mb-2">
-                        <Heart className="w-4 h-4 text-pink-400" />
-                        <span className="text-sm font-semibold text-pink-200">Total Interests</span>
+                        <Heart className="w-4 h-4 text-blue-300" />
+                        <span className="text-sm font-semibold text-blue-100">Total Interests</span>
                       </div>
                       <p className="text-2xl font-bold text-white">{profileData.hobbies.length}</p>
                     </div>
                   </div>
                 ) : (
                   <div className="text-center py-12">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center border border-white/20">
-                      <Heart className="w-8 h-8 text-pink-400" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500/30 to-cyan-500/30 flex items-center justify-center border border-white/20">
+                      <Heart className="w-8 h-8 text-blue-300" />
                     </div>
                     <p className="text-white/80 font-semibold text-lg">No interests listed</p>
                     <p className="text-white/60 text-sm mt-2">Add some to let others know what you love</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Enhanced Filters Section */}
+            <Card className="border-0 shadow-2xl bg-white/10 backdrop-blur-xl border border-white/20 hover:shadow-3xl transition-all duration-500 group">
+              <CardHeader className="pb-6">
+                <CardTitle className="flex items-center text-2xl bg-gradient-to-r from-white to-violet-200 bg-clip-text text-transparent">
+                  <div className="p-3 bg-blue-500/20 rounded-xl mr-4 group-hover:bg-blue-500/30 transition-colors">
+                    <Filter className="w-6 h-6 text-blue-300" />
+                  </div>
+                  Filters
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {profileData?.FILTERS && profileData.FILTERS.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      {profileData.FILTERS.map((filter, index) => (
+                        <div 
+                          key={index} 
+                          className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-400/30 hover:from-blue-500/30 hover:to-cyan-500/30 hover:border-blue-400/50 transition-all duration-300 backdrop-blur-xl"
+                        >
+                          <div className="flex items-center justify-center w-8 h-8 bg-blue-500/30 rounded-full border border-blue-400/50">
+                            <span className="text-sm font-bold text-blue-200">{index + 1}</span>
+                          </div>
+                          <p className="text-white font-medium flex-1">{filter}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-6 p-4 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-xl border border-blue-400/30">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Filter className="w-4 h-4 text-blue-400" />
+                        <span className="text-sm font-semibold text-blue-200">Total Filters</span>
+                      </div>
+                      <p className="text-2xl font-bold text-white">{profileData.FILTERS.length}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center border border-white/20">
+                      <Filter className="w-8 h-8 text-blue-400" />
+                    </div>
+                    <p className="text-white/80 font-semibold text-lg">No filters set</p>
+                    <p className="text-white/60 text-sm mt-2">Add filters to customize your preferences</p>
                   </div>
                 )}
               </CardContent>

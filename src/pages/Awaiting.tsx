@@ -20,6 +20,7 @@ interface User {
   images?: string[];
   kundliScore?: number;
   user_align?: boolean;
+  reason?: string;
 }
 
 interface AwaitingProps {
@@ -92,6 +93,13 @@ const Awaiting = ({ cachedData }: AwaitingProps) => {
                     </Badge>
                   ))}
                 </div>
+              </div>
+            )}
+            {user.reason && (
+              <div className="mt-3 text-center">
+                <p className="text-sm text-white/70 italic">
+                  "{user.reason}"
+                </p>
               </div>
             )}
           </div>

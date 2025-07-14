@@ -50,6 +50,7 @@ interface RecommendationCard {
   profession?: string;
   blocked_by_match?: boolean;
   blocked_by_user?: boolean;
+  reason?: string;
 }
 
 const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: DashboardProps) => {
@@ -143,6 +144,74 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     }
   };
 
+  // Helper function to process recommendations from chat API response
+  const processRecommendationsFromChat = async (data: any) => {
+    console.log('Checking for recommendations in chat response:', data);
+    
+    if (data.recommendations && Array.isArray(data.recommendations)) {
+      console.log(`Found recommendations array with ${data.recommendations.length} items:`, data.recommendations);
+      
+      if (data.recommendations.length > 1) {
+        console.log('Processing recommendations from chat response (more than 1 item):', data.recommendations);
+        
+        try {
+          // Fetch profile data for each recommendation
+          const enrichedRecommendations = await Promise.all(
+            data.recommendations.map(async (rec: any) => {
+              const uid = rec.recommendation_uid;
+              if (!uid) {
+                console.error('No UID found in recommendation:', rec);
+                return rec;
+              }
+              
+              const profileData = await fetchProfileData(uid);
+              if (profileData) {
+                return {
+                  ...rec,
+                  recommendation_uid: uid,
+                  name: profileData.NAME || profileData.name || rec.name,
+                  images: profileData.IMAGES || profileData.images || [],
+                  city: profileData.CITY || profileData.city,
+                  country: profileData.COUNTRY || profileData.country,
+                  profession: profileData.PROFESSION || profileData.profession,
+                  hobbies: profileData.HOBBIES || profileData.hobbies,
+                  gender: profileData.GENDER || profileData.gender,
+                  dob: profileData.DOB || profileData.dob,
+                  blocked_by_match: rec.blocked_by_match || false,
+                  blocked_by_user: rec.blocked_by_user || false,
+                  reason: rec.reason
+                };
+              }
+              return rec;
+            })
+          );
+          
+          console.log('Enriched recommendations:', enrichedRecommendations);
+          
+          // Update the recommendations state
+          setRecommendations(enrichedRecommendations);
+          
+          // Switch to recommendations tab if not already there
+          if (activeTab !== 'recommendations') {
+            console.log('Switching to recommendations tab');
+            updateActiveTab('recommendations');
+          }
+          
+          // Mark recommendations tab as loaded
+          setLoadedTabs(prev => new Set([...prev, 'recommendations']));
+          
+          console.log('Successfully updated recommendations from chat response');
+        } catch (error) {
+          console.error('Error processing recommendations from chat response:', error);
+        }
+      } else {
+        console.log('Recommendations array has only', data.recommendations.length, 'item(s), need more than 1 to update');
+      }
+    } else {
+      console.log('No recommendations key found or not an array in response');
+    }
+  };
+
   // Fetch data for each tab
   const fetchTabData = async (tab: string) => {
     if (!userUID) return;
@@ -225,7 +294,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               gender: profileData.GENDER || profileData.gender,
               dob: profileData.DOB || profileData.dob,
               blocked_by_match: card.blocked_by_match || false,
-              blocked_by_user: card.blocked_by_user || false
+              blocked_by_user: card.blocked_by_user || false,
+              reason: card.reason // Preserve the reason field from the backend
             };
             console.log(`Created enriched card:`, enrichedCard);
             return enrichedCard;
@@ -297,23 +367,31 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       const timer = setTimeout(async () => {
         try {
           console.log('Making chat:initiate call for UID:', userUID);
-          const response = await fetch(`http://localhost:8040/chat:initiate/${userUID}`, {
-            method: 'GET',
+          const response = await fetch(`http://localhost:8040/chat:app`, {
+            method: 'POST',
             headers: {
               'Accept': 'application/json',
+              'Content-Type': 'application/json',
               'Origin': 'http://localhost:8080'
-            }
+            },
+            body: JSON.stringify({
+              uid: userUID
+            })
           });
           
           if (response.ok) {
             const data = await response.json();
             console.log('Chat initiated successfully:', data);
             setChatMessage(data.message);
+            
+            // Process recommendations if present
+            await processRecommendationsFromChat(data);
+            
             // Initialize unified chat state with the first message
             const initialMessage = { text: data.message, isUser: false, timestamp: new Date() };
             setUnifiedChatMessages([initialMessage]);
             setUnifiedChatHistory([{ text: data.message, isUser: false }]);
-        setShowChat(true);
+            setShowChat(true);
             setIsInitialResponse(true);
           } else {
             console.error('Failed to initiate chat:', response.status);
@@ -794,6 +872,19 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   </>
                 )}
               </div>
+              
+              {user.reason && (
+                <>
+                  <div className="mt-8 mx-8">
+                    <hr className="border-white/30 border-t-2" />
+                  </div>
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-white/70 italic">
+                      "{user.reason}"
+                    </p>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -922,7 +1013,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     if (!userUID) return;
     
     try {
-      const response = await fetch('http://localhost:8040/chat/preference:continue', {
+      const response = await fetch('http://localhost:8040/chat:user', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -938,6 +1029,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         const data = await response.json();
         console.log('Preference chat initiated successfully:', data);
         setChatMessage(data.message);
+        
+        // Process recommendations if present
+        await processRecommendationsFromChat(data);
+        
         // Initialize unified chat state with the preference chat message
         const initialMessage = { text: data.message, isUser: false, timestamp: new Date() };
         setUnifiedChatMessages([initialMessage]);
@@ -964,11 +1059,11 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     setUnifiedChatMessages(prev => [...prev, userMessage]);
     
     try {
-      let endpoint = 'chat/initiate:continue';
+      let endpoint = 'chat:app';
       if (isPreferenceChat) {
-        endpoint = 'chat/preference:continue';
+        endpoint = 'chat:user';
       } else if (isInitialResponse) {
-        endpoint = 'chat/initiate:continue';
+        endpoint = 'chat:app';
       }
       
       const response = await fetch(`http://localhost:8040/${endpoint}`, {
@@ -990,6 +1085,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
           setChatMessage(data.message);
+          
+          // Process recommendations if present
+          await processRecommendationsFromChat(data);
           
           // Add response to unified chat state
           const responseMessage = { text: data.message, isUser: false, timestamp: new Date() };
@@ -1027,7 +1125,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       try {
         // Determine if this is a preference chat by checking if the chat was initiated by preference button
         const isPreferenceChatExit = showChatWindow;
-        const endpoint = isPreferenceChatExit ? 'chat/preference:continue' : 'chat/initiate:continue';
+        const endpoint = isPreferenceChatExit ? 'chat:user' : 'chat:app';
         
         const response = await fetch(`http://localhost:8040/${endpoint}`, {
           method: 'POST',
@@ -1044,7 +1142,11 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         });
         
         if (response.ok) {
+          const data = await response.json();
           console.log('Chat exit handled successfully');
+          
+          // Process recommendations if present
+          await processRecommendationsFromChat(data);
         }
       } catch (error) {
         console.error('Error handling chat exit:', error);

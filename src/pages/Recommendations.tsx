@@ -19,6 +19,7 @@ interface User {
   bio?: string;
   images?: string[];
   kundliScore?: number;
+  reason?: string;
 }
 
 interface RecommendationsProps {
@@ -78,10 +79,17 @@ const Recommendations = ({ cachedData }: RecommendationsProps) => {
                 </span>
               </div>
             )}
+            {user.reason && (
+              <div className="mt-3 text-center">
+                <p className="text-sm text-white/70 italic">
+                  "{user.reason}"
+                </p>
+              </div>
+            )}
             {user.hobbies && (
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-1.5">
-                  {user.hobbies.split(',').slice(0, 3).map((hobby, index) => (
+                  {(typeof user.hobbies === 'string' ? user.hobbies.split(',') : user.hobbies).slice(0, 3).map((hobby, index) => (
                     <Badge 
                       key={index} 
                       variant="secondary" 
