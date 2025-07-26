@@ -231,7 +231,10 @@ const Index = () => {
       images: images,
       login: data.LOGIN || data.login || '',
       user_align: data.user_align || false,
-      FILTERS: filters // Added FILTERS field
+      FILTERS: filters, // Added FILTERS field
+      Question1: data.Question1,
+      Question2: data.Question2,
+      Question3: data.Question3
     };
   };
 

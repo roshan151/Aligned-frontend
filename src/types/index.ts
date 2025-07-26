@@ -14,6 +14,7 @@ export interface User {
   kundliScore?: number;
   user_align?: boolean;
   reason?: string;
+  filtered?: boolean;
 }
 
 export interface Notification {
@@ -51,4 +52,7 @@ export interface ProfileData {
   kundliScore?: number;
   user_align?: boolean;
   FILTERS?: string[]; // Added FILTERS field
+  Question1?: { Question: string; Answer: string };
+  Question2?: { Question: string; Answer: string };
+  Question3?: { Question: string; Answer: string };
 } 

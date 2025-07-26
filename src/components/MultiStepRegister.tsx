@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { Heart, Check, X, Calendar as CalendarIcon, Eye, EyeOff, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,8 @@ const steps = [
   { id: 2, title: "Location", description: "Where are you from?" },
   { id: 3, title: "Birth Details", description: "Your birth information" },
   { id: 4, title: "Interests", description: "What do you enjoy?" },
-  { id: 5, title: "Photos", description: "Upload your pictures" }
+  { id: 5, title: "Photos", description: "Upload your pictures" },
+  { id: 6, title: "Personal Questions", description: "Tell us more about yourself" }
 ];
 
 const MultiStepRegister = () => {
@@ -51,6 +53,9 @@ const MultiStepRegister = () => {
     tob: "",
     gender: "",
     hobbies: [] as string[],
+    question1Answer: "",
+    question2Answer: "",
+    question3Answer: "",
   });
   const [images, setImages] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -139,6 +144,8 @@ const MultiStepRegister = () => {
         return formData.hobbies.length > 0;
       case 5:
         return images.length > 0;
+      case 6:
+        return formData.question1Answer.trim() && formData.question2Answer.trim() && formData.question3Answer.trim();
       default:
         return false;
     }
@@ -159,7 +166,7 @@ const MultiStepRegister = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(5)) {
+    if (!validateStep(6)) {
       setError('Please complete all required fields');
       return;
     }
@@ -182,6 +189,18 @@ const MultiStepRegister = () => {
         tob: formData.tob,
         gender: formData.gender,
         hobbies: formData.hobbies,
+        Question1: {
+          Question: "What does your ideal date look like?",
+          Answer: formData.question1Answer
+        },
+        Question2: {
+          Question: "What comforts you the most at the end of a tough day?",
+          Answer: formData.question2Answer
+        },
+        Question3: {
+          Question: "What kind of life do you imagine with your ideal partner?",
+          Answer: formData.question3Answer
+        }
       };
 
       const formDataToSend = new FormData();
@@ -510,6 +529,82 @@ const MultiStepRegister = () => {
           </div>
         );
 
+      case 6:
+        return (
+          <div className="space-y-6">
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="question1" className="text-sm font-medium text-white">
+                  What does your ideal date look like? *
+                </Label>
+                <Textarea
+                  id="question1"
+                  value={formData.question1Answer}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 4000) {
+                      handleInputChange('question1Answer', value);
+                    }
+                  }}
+                  className="min-h-[120px] bg-white/10 backdrop-blur-sm border-white/30 text-white placeholder:text-white/60 focus:border-white/50 resize-none"
+                  placeholder="Describe your ideal date experience..."
+                  maxLength={4000}
+                />
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>Share your thoughts about the perfect romantic experience</span>
+                  <span>{formData.question1Answer.length}/4000 characters</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="question2" className="text-sm font-medium text-white">
+                  What comforts you the most at the end of a tough day? *
+                </Label>
+                <Textarea
+                  id="question2"
+                  value={formData.question2Answer}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 4000) {
+                      handleInputChange('question2Answer', value);
+                    }
+                  }}
+                  className="min-h-[120px] bg-white/10 backdrop-blur-sm border-white/30 text-white placeholder:text-white/60 focus:border-white/50 resize-none"
+                  placeholder="Tell us what brings you peace and comfort..."
+                  maxLength={4000}
+                />
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>Help us understand what makes you feel at ease</span>
+                  <span>{formData.question2Answer.length}/4000 characters</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="question3" className="text-sm font-medium text-white">
+                  What kind of life do you imagine with your ideal partner? *
+                </Label>
+                <Textarea
+                  id="question3"
+                  value={formData.question3Answer}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 4000) {
+                      handleInputChange('question3Answer', value);
+                    }
+                  }}
+                  className="min-h-[120px] bg-white/10 backdrop-blur-sm border-white/30 text-white placeholder:text-white/60 focus:border-white/50 resize-none"
+                  placeholder="Paint a picture of your future together..."
+                  maxLength={4000}
+                />
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>Describe your vision of a shared future</span>
+                  <span>{formData.question3Answer.length}/4000 characters</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -623,7 +718,7 @@ const MultiStepRegister = () => {
                 <Button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={isLoading || !validateStep(5)}
+                  disabled={isLoading || !validateStep(6)}
                   className="bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white font-medium"
                 >
                   {isLoading ? "Creating Account..." : "Create Account"}

@@ -22,6 +22,7 @@ import { getSignedS3Url, extractS3Key } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { useS3Assets } from "../hooks/useS3Assets";
 import { useChatContext } from "../contexts/ChatContext";
+import { useProfileContext } from "../contexts/ProfileContext";
 
 interface DashboardMessage {
   id: string;
@@ -51,6 +52,19 @@ interface RecommendationCard {
   blocked_by_match?: boolean;
   blocked_by_user?: boolean;
   reason?: string;
+  filtered?: boolean; // Flag to track if card was filtered
+  Question1?: {
+    Question: string;
+    Answer: string;
+  };
+  Question2?: {
+    Question: string;
+    Answer: string;
+  };
+  Question3?: {
+    Question: string;
+    Answer: string;
+  };
 }
 
 const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: DashboardProps) => {
@@ -63,8 +77,14 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     setUnifiedChatHistory,
     hasUserSentMessage,
     setHasUserSentMessage,
-    chatHistoryRef
+    chatHistoryRef,
+    clearChatHistory,
+    initializeUserSession,
+    switchUser,
+    addSessionSeparator
   } = useChatContext();
+  
+  const { refreshProfile } = useProfileContext();
   
   const [matches, setMatches] = useState<RecommendationCard[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationCard[]>([]);
@@ -99,6 +119,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   const [isWaitingForUser, setIsWaitingForUser] = useState(false);
   const [isInitialResponse, setIsInitialResponse] = useState(false);
   const [isPreferenceChat, setIsPreferenceChat] = useState(false);
+  const [hasUsedChatWithDestiny, setHasUsedChatWithDestiny] = useState(() => {
+    // Check if user has used ChatWithDestiny in this session
+    return sessionStorage.getItem(`destinyWindowChatUsed_${userUID}`) === 'true';
+  });
   const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
 
   // Fetch profile data for a recommendation card
@@ -144,12 +168,188 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     }
   };
 
+  // Helper function to process recommendations from cache (filter removal)
+  const processRecommendationsFromCache = async (recommendationCards: any[]) => {
+    console.log('Processing recommendations from cache:', recommendationCards);
+    
+    if (recommendationCards && Array.isArray(recommendationCards) && recommendationCards.length > 0) {
+      try {
+        // Fetch profile data for each recommendation
+        const enrichedRecommendations = await Promise.all(
+          recommendationCards.map(async (rec: any) => {
+            const uid = rec.recommendation_uid;
+            if (!uid) {
+              console.error('No UID found in recommendation:', rec);
+              return rec;
+            }
+            
+            const profileData = await fetchProfileData(uid);
+            if (profileData) {
+              return {
+                ...rec,
+                recommendation_uid: uid,
+                name: profileData.NAME || profileData.name || rec.name,
+                images: profileData.IMAGES || profileData.images || [],
+                city: profileData.CITY || profileData.city,
+                country: profileData.COUNTRY || profileData.country,
+                profession: profileData.PROFESSION || profileData.profession,
+                hobbies: profileData.HOBBIES || profileData.hobbies,
+                gender: profileData.GENDER || profileData.gender,
+                dob: profileData.DOB || profileData.dob,
+                blocked_by_match: rec.blocked_by_match || false,
+                blocked_by_user: rec.blocked_by_user || false,
+                reason: rec.reason
+              };
+            }
+            return rec;
+          })
+        );
+        
+        console.log('Enriched recommendations from cache:', enrichedRecommendations);
+        
+        // Update the recommendations state
+        setRecommendations(enrichedRecommendations);
+        
+        // Switch to recommendations tab if not already there
+        if (activeTab !== 'recommendations') {
+          console.log('Switching to recommendations tab');
+          updateActiveTab('recommendations');
+        }
+        
+        // Mark recommendations tab as loaded
+        setLoadedTabs(prev => new Set([...prev, 'recommendations']));
+        
+        console.log('Successfully updated recommendations from cache');
+      } catch (error) {
+        console.error('Error processing recommendations from cache:', error);
+      }
+    } else {
+      console.log('No valid recommendations found in cache');
+    }
+  };
+
   // Helper function to process recommendations from chat API response
+  // Handles responses from chat:user, chat:app, and chat:preference endpoints
+  // Key features:
+  // 1. Checks for filter_applied=true and refreshes recommendations queue accordingly
+  // 2. Sets filtered=false for all processed recommendations to reset filter state
+  // 3. Supports both new filter-based processing and legacy recommendation processing
   const processRecommendationsFromChat = async (data: any) => {
     console.log('Checking for recommendations in chat response:', data);
     
-    if (data.recommendations && Array.isArray(data.recommendations)) {
-      console.log(`Found recommendations array with ${data.recommendations.length} items:`, data.recommendations);
+    // Check if filter_applied is true before processing recommendations
+    // This applies to both chat:user and chat:preference responses
+    if (data.filter_applied === true) {
+      console.log('Filter applied detected (from chat:user or chat:preference), filtering recommendations to ONLY show provided cards');
+      
+      if (data.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+        console.log(`Found ${data.recommendations.length} filtered recommendations - REPLACING entire recommendations list:`, data.recommendations);
+        
+        try {
+          // Fetch profile data for each filtered recommendation
+          const enrichedRecommendations = await Promise.all(
+            data.recommendations.map(async (rec: any) => {
+              // Handle both UID formats from backend
+              const uid = rec.UID || rec.recommendation_uid;
+              console.log('Processing recommendation:', rec, 'extracted UID:', uid);
+              
+              if (!uid) {
+                console.error('No UID found in recommendation (checked both UID and recommendation_uid):', rec);
+                return rec;
+              }
+              
+              const profileData = await fetchProfileData(uid);
+              console.log(`Profile data for ${uid}:`, profileData);
+              
+              if (profileData) {
+                const enrichedCard = {
+                  ...rec,
+                  recommendation_uid: uid, // Standardize field name
+                  UID: uid, // Keep both for compatibility
+                  name: profileData.NAME || profileData.name || rec.name || rec.NAME,
+                  images: profileData.IMAGES || profileData.images || [],
+                  city: profileData.CITY || profileData.city,
+                  country: profileData.COUNTRY || profileData.country,
+                  profession: profileData.PROFESSION || profileData.profession,
+                  hobbies: profileData.HOBBIES || profileData.hobbies,
+                  gender: profileData.GENDER || profileData.gender,
+                  dob: profileData.DOB || profileData.dob,
+                  blocked_by_match: rec.blocked_by_match || false,
+                  blocked_by_user: rec.blocked_by_user || false,
+                  reason: rec.reason || rec.USER_REASON || 'Not Present',
+                  score: rec.score || rec.RECOMMENDATION_SCORE || 0,
+                  chat_enabled: rec.chat_enabled || false,
+                  user_align: rec.user_align || false,
+                  Question1: rec.Question1 || {},
+                  Question2: rec.Question2 || {},
+                  Question3: rec.Question3 || {},
+                  filtered: false // Set filtered to false for recommendations from filter refresh
+                };
+                console.log('Created enriched card:', enrichedCard);
+                return enrichedCard;
+              } else {
+                console.error(`Failed to fetch profile data for UID: ${uid}`);
+                return {
+                  ...rec,
+                  recommendation_uid: uid,
+                  UID: uid,
+                  name: rec.name || rec.NAME || 'Unknown User',
+                  images: [],
+                  reason: rec.reason || rec.USER_REASON || 'Not Present',
+                  filtered: false
+                };
+              }
+            })
+          );
+          
+          console.log('Enriched filtered recommendations (ONLY these will be shown):', enrichedRecommendations);
+          
+          // REPLACE the entire recommendations state with ONLY the filtered cards
+          // This ensures only the cards from chat:user response are displayed
+          setRecommendations(enrichedRecommendations);
+          
+          // Switch to recommendations tab if not already there to show filtered results
+          if (activeTab !== 'recommendations') {
+            console.log('Switching to recommendations tab to show filtered results');
+            updateActiveTab('recommendations');
+          }
+          
+          // Mark recommendations tab as loaded
+          setLoadedTabs(prev => new Set([...prev, 'recommendations']));
+          
+          // Refresh user profile to reflect new filters
+          if (userUID) {
+            console.log('Refreshing user profile due to filter_applied=true');
+            try {
+              await refreshProfile(userUID);
+              console.log('Profile refresh triggered successfully');
+            } catch (error) {
+              console.error('Error refreshing profile after filter applied:', error);
+            }
+          }
+          
+          console.log(`Successfully applied filter - now showing ONLY ${enrichedRecommendations.length} filtered recommendations`);
+        } catch (error) {
+          console.error('Error processing filtered recommendations:', error);
+        }
+      } else if (data.recommendations && Array.isArray(data.recommendations) && data.recommendations.length === 0) {
+        console.log('Filter applied with empty recommendations array - clearing recommendations list');
+        // If filter is applied but recommendations array is empty, clear the recommendations
+        setRecommendations([]);
+        
+        // Switch to recommendations tab to show empty filtered results
+        if (activeTab !== 'recommendations') {
+          console.log('Switching to recommendations tab to show empty filtered results');
+          updateActiveTab('recommendations');
+        }
+        
+        setLoadedTabs(prev => new Set([...prev, 'recommendations']));
+        console.log('Successfully applied filter - no matching recommendations found');
+      } else {
+        console.log('Filter applied but no valid recommendations array found in response');
+      }
+    } else if (data.recommendations && Array.isArray(data.recommendations)) {
+      console.log(`Found recommendations array with ${data.recommendations.length} items (legacy processing):`, data.recommendations);
       
       if (data.recommendations.length > 1) {
         console.log('Processing recommendations from chat response (more than 1 item):', data.recommendations);
@@ -179,7 +379,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   dob: profileData.DOB || profileData.dob,
                   blocked_by_match: rec.blocked_by_match || false,
                   blocked_by_user: rec.blocked_by_user || false,
-                  reason: rec.reason
+                  reason: rec.reason,
+                  filtered: false // Set filtered to false for legacy recommendations processing
                 };
               }
               return rec;
@@ -208,7 +409,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         console.log('Recommendations array has only', data.recommendations.length, 'item(s), need more than 1 to update');
       }
     } else {
-      console.log('No recommendations key found or not an array in response');
+      console.log('No filter_applied=true or recommendations key found in response');
     }
   };
 
@@ -282,6 +483,13 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           console.log(`Fetching profile for UID: ${uid}`);
           const profileData = await fetchProfileData(uid);
           if (profileData) {
+            // Check if card has filtered property set to true and reset it to false
+            // This ensures filtered cards are properly reset when loading/refreshing recommendations
+            const isFiltered = card.filtered === true;
+            if (isFiltered) {
+              console.log(`Card ${uid} has filtered=true, resetting to false for queue: ${tab}`);
+            }
+            
             const enrichedCard = {
               ...card,
               recommendation_uid: uid,
@@ -295,7 +503,11 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               dob: profileData.DOB || profileData.dob,
               blocked_by_match: card.blocked_by_match || false,
               blocked_by_user: card.blocked_by_user || false,
-              reason: card.reason // Preserve the reason field from the backend
+              reason: card.reason, // Preserve the reason field from the backend
+              Question1: card.Question1,
+              Question2: card.Question2,
+              Question3: card.Question3,
+              filtered: false // Always set filtered to false when processing cards
             };
             console.log(`Created enriched card:`, enrichedCard);
             return enrichedCard;
@@ -326,9 +538,31 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     }
   };
 
-  // Effect to fetch initial data
+  // Effect to fetch initial data and check for updated recommendations cache
   useEffect(() => {
     if (userUID) {
+      // Check if there are updated recommendations from profile filter removal
+      const updatedRecommendations = localStorage.getItem('updatedRecommendations');
+      const cacheTimestamp = localStorage.getItem('recommendationsCacheTimestamp');
+      
+      if (updatedRecommendations && cacheTimestamp) {
+        try {
+          const parsedRecommendations = JSON.parse(updatedRecommendations);
+          console.log('Found updated recommendations from filter removal:', parsedRecommendations);
+          
+          // Process the updated recommendations
+          processRecommendationsFromCache(parsedRecommendations);
+          
+          // Clean up the cache
+          localStorage.removeItem('updatedRecommendations');
+          localStorage.removeItem('recommendationsCacheTimestamp');
+          
+          return; // Don't fetch from server if we have updated cache
+        } catch (error) {
+          console.error('Error parsing updated recommendations:', error);
+        }
+      }
+      
       console.log('Initial data fetch for recommendations...');
       fetchTabData('recommendations');
     }
@@ -341,6 +575,18 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       fetchTabData(activeTab);
     }
   }, [userUID, activeTab]);
+
+  // Effect to initialize user session when userUID changes
+  useEffect(() => {
+    if (userUID) {
+      console.log('Initializing chat session for user:', userUID);
+      initializeUserSession(userUID);
+      
+      // Reset ChatWithDestiny usage tracking for new user session
+      const hasUsedInSession = sessionStorage.getItem(`destinyWindowChatUsed_${userUID}`) === 'true';
+      setHasUsedChatWithDestiny(hasUsedInSession);
+    }
+  }, [userUID, initializeUserSession]);
 
   // Effect to handle notifications
   useEffect(() => {
@@ -358,13 +604,20 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     const hasCompleted = sessionStorage.getItem('destinyChatCompleted');
     const hasUserChatted = sessionStorage.getItem('destinyUserHasChatted');
       
-    if (!hasDismissed && !hasCompleted && !hasUserChatted && !hasUserSentMessage && userUID) {
+    // Disable delayed popup if destiny chat window is open or user is already using ChatWithDestiny
+    if (!hasDismissed && !hasCompleted && !hasUserChatted && !hasUserSentMessage && !showChatWindow && !hasUsedChatWithDestiny && userUID) {
       console.log('Setting up chat timer with UID:', userUID);
-      // Generate random delay between 20 and 70 seconds
-      const randomDelay = Math.floor(Math.random() * (70000 - 20000) + 20000);
-      console.log(`Chat will appear in ${randomDelay/1000} seconds`);
+      // Generate random delay between 2 and 5 minutes
+      const randomDelay = Math.floor(Math.random() * (300000 - 120000) + 120000);
+      console.log(`Chat will appear in ${randomDelay/1000} seconds (${Math.round(randomDelay/60000)} minutes)`);
       
       const timer = setTimeout(async () => {
+        // Double-check that destiny chat window is still not open and user hasn't started using ChatWithDestiny
+        if (showChatWindow || hasUsedChatWithDestiny) {
+          console.log('Destiny chat window is open or user is using ChatWithDestiny, skipping delayed popup');
+          return;
+        }
+        
         try {
           console.log('Making chat:initiate call for UID:', userUID);
           const response = await fetch(`http://localhost:8040/chat:app`, {
@@ -387,9 +640,17 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
             // Process recommendations if present
             await processRecommendationsFromChat(data);
             
+            // Add separator for chat:app messages
+            addSessionSeparator('chat-type');
+            
             // Initialize unified chat state with the first message
-            const initialMessage = { text: data.message, isUser: false, timestamp: new Date() };
-            setUnifiedChatMessages([initialMessage]);
+            const initialMessage = { 
+              text: data.message, 
+              isUser: false, 
+              timestamp: new Date(),
+              type: 'chat:app' as const
+            };
+            setUnifiedChatMessages(prev => [...prev, initialMessage]);
             setUnifiedChatHistory([{ text: data.message, isUser: false }]);
             setShowChat(true);
             setIsInitialResponse(true);
@@ -402,8 +663,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
       }, randomDelay);
       
       return () => clearTimeout(timer);
+    } else if (showChatWindow) {
+      console.log('Destiny chat window is open, delaying popup is disabled');
+    } else if (hasUsedChatWithDestiny) {
+      console.log('User is already using ChatWithDestiny for chat:user, delaying popup is disabled');
     }
-  }, [userUID]);
+  }, [userUID, showChatWindow, hasUsedChatWithDestiny]);
 
   const addMessage = (text: string, userName?: string) => {
     const newMessage: DashboardMessage = {
@@ -422,6 +687,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   };
 
   const handleLogout = () => {
+    // Clear chat history when logging out
+    clearChatHistory();
+    
     if (onLogout) {
       onLogout();
     } else {
@@ -769,7 +1037,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                             state: {
                               userName: user.name,
                               userProfilePicture: profileImage,
-                              isBlocked: isBlockedByEither
+                              isBlocked: isBlockedByEither,
+                              Question1: user.Question1,
+                              Question2: user.Question2,
+                              Question3: user.Question3
                             }
                           });
                         }}
@@ -983,6 +1254,34 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   <CarouselNext className="absolute right-0 top-1/2 -translate-y-1/2 bg-white/10 backdrop-blur-xl border-white/20 text-white hover:bg-white/20 hover:border-white/30" />
                 </Carousel>
               )}
+
+              {/* Show questions only for recommendations and awaiting, not for matches */}
+              {(queue === "recommendations" || queue === "awaiting") && (user.Question1 || user.Question2 || user.Question3) && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-white mb-3">Personal Insights</h3>
+                  
+                  {user.Question1 && (
+                    <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
+                      <h4 className="text-sm font-medium text-white/90 mb-2">{user.Question1.Question}</h4>
+                      <p className="text-white/70 text-sm leading-relaxed">{user.Question1.Answer}</p>
+                    </div>
+                  )}
+                  
+                  {user.Question2 && (
+                    <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
+                      <h4 className="text-sm font-medium text-white/90 mb-2">{user.Question2.Question}</h4>
+                      <p className="text-white/70 text-sm leading-relaxed">{user.Question2.Answer}</p>
+                    </div>
+                  )}
+                  
+                  {user.Question3 && (
+                    <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
+                      <h4 className="text-sm font-medium text-white/90 mb-2">{user.Question3.Question}</h4>
+                      <p className="text-white/70 text-sm leading-relaxed">{user.Question3.Answer}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -1013,7 +1312,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     if (!userUID) return;
     
     try {
-      const response = await fetch('http://localhost:8040/chat:user', {
+      // Try chat:preference endpoint first, fallback to chat:user
+      let endpoint = 'chat:preference';
+      let response = await fetch(`http://localhost:8040/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1025,22 +1326,47 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
         })
       });
       
+      // Fallback to chat:user if chat:preference is not available
+      if (!response.ok && response.status === 404) {
+        console.log('chat:preference not available, falling back to chat:user');
+        endpoint = 'chat:user';
+        response = await fetch(`http://localhost:8040/${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Origin': 'http://localhost:8080'
+          },
+          body: JSON.stringify({
+            uid: userUID
+          })
+        });
+      }
+      
       if (response.ok) {
         const data = await response.json();
-        console.log('Preference chat initiated successfully:', data);
+        console.log(`Preference chat initiated successfully via ${endpoint}:`, data);
         setChatMessage(data.message);
         
-        // Process recommendations if present
+        // Process recommendations if present, especially if filter_applied=true
         await processRecommendationsFromChat(data);
         
+        // Add separator for preference chat messages
+        addSessionSeparator('chat-type');
+        
         // Initialize unified chat state with the preference chat message
-        const initialMessage = { text: data.message, isUser: false, timestamp: new Date() };
-        setUnifiedChatMessages([initialMessage]);
+        const initialMessage = { 
+          text: data.message, 
+          isUser: false, 
+          timestamp: new Date(),
+          type: 'chat:user' as const
+        };
+        setUnifiedChatMessages(prev => [...prev, initialMessage]);
         setUnifiedChatHistory(data.history || []);
         setShowChat(true);
         setIsPreferenceChat(true);
       } else {
-        console.error('Failed to initiate preference chat:', response.status);
+        console.error(`Failed to initiate preference chat via ${endpoint}:`, response.status);
       }
     } catch (error) {
       console.error('Error initiating preference chat:', error);
@@ -1055,7 +1381,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
     sessionStorage.setItem('destinyUserHasChatted', 'true');
     
     // Add user message to unified chat state
-    const userMessage = { text: userInput, isUser: true, timestamp: new Date() };
+    const userMessage = { 
+      text: userInput, 
+      isUser: true, 
+      timestamp: new Date(),
+      type: isPreferenceChat ? 'chat:user' as const : 'chat:app' as const
+    };
     setUnifiedChatMessages(prev => [...prev, userMessage]);
     
     try {
@@ -1090,7 +1421,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           await processRecommendationsFromChat(data);
           
           // Add response to unified chat state
-          const responseMessage = { text: data.message, isUser: false, timestamp: new Date() };
+          const responseMessage = { 
+            text: data.message, 
+            isUser: false, 
+            timestamp: new Date(),
+            type: isPreferenceChat ? 'chat:user' as const : 'chat:app' as const
+          };
           setUnifiedChatMessages(prev => [...prev, responseMessage]);
           
           // Add user message and response to unified chat history
@@ -1160,7 +1496,10 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
   // Callback for when user sends message in ChatWithDestiny
   const handleUserSendMessage = () => {
     setHasUserSentMessage(true);
+    setHasUsedChatWithDestiny(true);
     sessionStorage.setItem('destinyUserHasChatted', 'true');
+    sessionStorage.setItem(`destinyWindowChatUsed_${userUID}`, 'true');
+    console.log('User has started using ChatWithDestiny for chat:user - disabling chat:app popup');
   };
 
   if (selectedUser) {
@@ -1566,6 +1905,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
           }}
           showChatWindow={showChatWindow}
           onUserSendMessage={handleUserSendMessage}
+          onFilterApplied={processRecommendationsFromChat} // Add callback for filter responses
           messages={unifiedChatMessages}
           setMessages={setUnifiedChatMessages}
           history={unifiedChatHistory}

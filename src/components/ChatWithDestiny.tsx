@@ -6,11 +6,14 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { config } from "../config/api";
 import { useChatContext } from "../contexts/ChatContext";
+import { useProfileContext } from "../contexts/ProfileContext";
 
 interface Message {
   text: string;
   isUser: boolean;
   timestamp: Date;
+  sessionId?: string; // Track which session this message belongs to
+  type?: 'chat:app' | 'chat:user' | 'session-separator'; // Track message type
 }
 
 interface ChatWithDestinyProps {
@@ -18,6 +21,7 @@ interface ChatWithDestinyProps {
   onClose: () => void;
   showChatWindow: boolean;
   onUserSendMessage?: () => void;
+  onFilterApplied?: (data: any) => void; // New prop for handling filter responses
   messages?: Message[];
   setMessages?: React.Dispatch<React.SetStateAction<Message[]>>;
   history?: any[];
@@ -29,6 +33,7 @@ const ChatWithDestiny = ({
   onClose, 
   showChatWindow, 
   onUserSendMessage,
+  onFilterApplied, // New prop
   messages: propMessages,
   setMessages: propSetMessages,
   history: propHistory,
@@ -40,6 +45,8 @@ const ChatWithDestiny = ({
     unifiedChatHistory, 
     setUnifiedChatHistory 
   } = useChatContext();
+  
+  const { refreshProfile } = useProfileContext();
   
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
@@ -128,6 +135,26 @@ const ChatWithDestiny = ({
             { text: inputMessage, isUser: true },
             { text: data.message, isUser: false }
           ]);
+        }
+
+        // Check if filter was applied and handle recommendations
+        if (data.filter_applied === true) {
+          console.log('Filter applied in ChatWithDestiny, processing response:', data);
+          
+          // Trigger profile refresh to reflect new filters
+          try {
+            console.log('Refreshing user profile due to filter_applied=true in ChatWithDestiny');
+            await refreshProfile(userUID);
+            console.log('Profile refresh triggered successfully from ChatWithDestiny');
+          } catch (error) {
+            console.error('Error refreshing profile from ChatWithDestiny:', error);
+          }
+          
+          // Call the parent callback if provided
+          if (onFilterApplied) {
+            console.log('Calling onFilterApplied callback with data:', data);
+            onFilterApplied(data);
+          }
         }
 
         // If this is the final message, mark chat as completed
@@ -226,20 +253,46 @@ const ChatWithDestiny = ({
                   <p className="text-gray-500 text-lg font-medium">matches and preferences!</p>
                 </div>
               )}
-              {messages.map((message, index) => (
-                <div 
-                  key={index} 
-                  className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`max-w-[80%] rounded-lg p-3 ${
-                    message.isUser 
-                      ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white' 
-                      : 'bg-gray-100 text-gray-900'
-                  }`}>
-                    <p className="text-sm">{message.text}</p>
+              {messages.map((message, index) => {
+                // Check if this is a session separator
+                if (message.type === 'session-separator') {
+                  return (
+                    <div key={index} className="flex justify-center my-4">
+                      <div className="flex items-center w-full">
+                        <div className="flex-1 border-t border-gray-300"></div>
+                        <div className="px-4 py-2 bg-gray-50 border border-gray-300 rounded-full">
+                          <p className="text-xs text-gray-600 font-medium whitespace-nowrap">
+                            {message.text}
+                          </p>
+                        </div>
+                        <div className="flex-1 border-t border-gray-300"></div>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Regular message rendering
+                return (
+                  <div 
+                    key={index} 
+                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div className={`max-w-[80%] rounded-lg p-3 ${
+                      message.isUser 
+                        ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white' 
+                        : 'bg-gray-100 text-gray-900'
+                    }`}>
+                                             <p className="text-sm">{message.text}</p>
+                       {/* Show message type indicator for debugging (optional) */}
+                       {message.type && (
+                         <p className="text-xs opacity-60 mt-1">
+                           {message.type}
+                         </p>
+                       )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {isLoading && (
                 <div className="flex justify-start">
                   <div className="bg-gray-100 rounded-lg p-3 text-gray-900">
