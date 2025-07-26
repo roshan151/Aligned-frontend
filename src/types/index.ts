@@ -13,6 +13,8 @@ export interface User {
   images?: string[];
   kundliScore?: number;
   user_align?: boolean;
+  reason?: string;
+  filtered?: boolean;
 }
 
 export interface Notification {
@@ -21,6 +23,7 @@ export interface Notification {
   message: string;
   timestamp: string;
   updated: string;
+  isNew?: boolean;
 }
 
 export interface DashboardData {
@@ -48,4 +51,8 @@ export interface ProfileData {
   login?: string;
   kundliScore?: number;
   user_align?: boolean;
+  FILTERS?: string[]; // Added FILTERS field
+  Question1?: { Question: string; Answer: string };
+  Question2?: { Question: string; Answer: string };
+  Question3?: { Question: string; Answer: string };
 } 

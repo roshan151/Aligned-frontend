@@ -3,9 +3,11 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, Send, User, Paperclip, X, Image as ImageIcon } from "lucide-react";
 import { config } from "../config/api";
 import { Client as ConversationsClient } from '@twilio/conversations';
+import { useS3Assets } from "../hooks/useS3Assets";
 
 interface Message {
   sid: string;
@@ -25,6 +27,21 @@ interface UserInfo {
   profilePicture?: string;
 }
 
+interface UserQuestions {
+  Question1?: {
+    Question: string;
+    Answer: string;
+  };
+  Question2?: {
+    Question: string;
+    Answer: string;
+  };
+  Question3?: {
+    Question: string;
+    Answer: string;
+  };
+}
+
 const Chat = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,6 +49,7 @@ const Chat = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const { assets } = useS3Assets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [chatClient, setChatClient] = useState<any>(null);
@@ -45,59 +63,249 @@ const Chat = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [userQuestions, setUserQuestions] = useState<UserQuestions | null>(null);
+  const [showUserProfile, setShowUserProfile] = useState(false);
 
   // Helper function to detect correct content type
   const getCorrectContentType = (originalContentType: string, filename: string, url?: string): string => {
-    console.log('getCorrectContentType called with:', { originalContentType, filename, url });
-    
     if (originalContentType && originalContentType !== 'application/octet-stream') {
-      console.log('Using original content type:', originalContentType);
       return originalContentType;
     }
     
-    // Try to detect by filename extension first
+    // Enhanced file extension detection
     if (filename && filename !== 'attachment') {
-      if (filename.match(/\.(jpg|jpeg)$/i)) {
-        console.log('Detected JPEG from filename');
+      const lowercaseFilename = filename.toLowerCase();
+      
+      // Image types
+      if (lowercaseFilename.match(/\.(jpg|jpeg)$/)) {
         return 'image/jpeg';
-      } else if (filename.match(/\.png$/i)) {
-        console.log('Detected PNG from filename');
+      } else if (lowercaseFilename.match(/\.png$/)) {
         return 'image/png';
-      } else if (filename.match(/\.gif$/i)) {
-        console.log('Detected GIF from filename');
+      } else if (lowercaseFilename.match(/\.gif$/)) {
         return 'image/gif';
-      } else if (filename.match(/\.webp$/i)) {
-        console.log('Detected WebP from filename');
+      } else if (lowercaseFilename.match(/\.webp$/)) {
         return 'image/webp';
+      } else if (lowercaseFilename.match(/\.svg$/)) {
+        return 'image/svg+xml';
+      } else if (lowercaseFilename.match(/\.bmp$/)) {
+        return 'image/bmp';
+      } else if (lowercaseFilename.match(/\.tiff?$/)) {
+        return 'image/tiff';
+      } else if (lowercaseFilename.match(/\.ico$/)) {
+        return 'image/x-icon';
+      }
+      
+      // Video types
+      else if (lowercaseFilename.match(/\.mp4$/)) {
+        return 'video/mp4';
+      } else if (lowercaseFilename.match(/\.webm$/)) {
+        return 'video/webm';
+      } else if (lowercaseFilename.match(/\.mov$/)) {
+        return 'video/quicktime';
+      } else if (lowercaseFilename.match(/\.avi$/)) {
+        return 'video/x-msvideo';
+      } else if (lowercaseFilename.match(/\.mkv$/)) {
+        return 'video/x-matroska';
+      } else if (lowercaseFilename.match(/\.flv$/)) {
+        return 'video/x-flv';
+      } else if (lowercaseFilename.match(/\.wmv$/)) {
+        return 'video/x-ms-wmv';
+      } else if (lowercaseFilename.match(/\.m4v$/)) {
+        return 'video/x-m4v';
+      }
+      
+      // Audio types
+      else if (lowercaseFilename.match(/\.mp3$/)) {
+        return 'audio/mpeg';
+      } else if (lowercaseFilename.match(/\.wav$/)) {
+        return 'audio/wav';
+      } else if (lowercaseFilename.match(/\.ogg$/)) {
+        return 'audio/ogg';
+      } else if (lowercaseFilename.match(/\.aac$/)) {
+        return 'audio/aac';
+      } else if (lowercaseFilename.match(/\.flac$/)) {
+        return 'audio/flac';
+      } else if (lowercaseFilename.match(/\.m4a$/)) {
+        return 'audio/mp4';
+      }
+      
+      // Document types
+      else if (lowercaseFilename.match(/\.pdf$/)) {
+        return 'application/pdf';
+      } else if (lowercaseFilename.match(/\.docx?$/)) {
+        return lowercaseFilename.endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/msword';
+      } else if (lowercaseFilename.match(/\.xlsx?$/)) {
+        return lowercaseFilename.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.ms-excel';
+      } else if (lowercaseFilename.match(/\.pptx?$/)) {
+        return lowercaseFilename.endsWith('.pptx') ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation' : 'application/vnd.ms-powerpoint';
+      } else if (lowercaseFilename.match(/\.txt$/)) {
+        return 'text/plain';
+      } else if (lowercaseFilename.match(/\.rtf$/)) {
+        return 'application/rtf';
+      }
+      
+      // Archive types
+      else if (lowercaseFilename.match(/\.zip$/)) {
+        return 'application/zip';
+      } else if (lowercaseFilename.match(/\.rar$/)) {
+        return 'application/vnd.rar';
+      } else if (lowercaseFilename.match(/\.7z$/)) {
+        return 'application/x-7z-compressed';
+      } else if (lowercaseFilename.match(/\.tar\.gz$/)) {
+        return 'application/gzip';
+      }
+      
+      // Code/text files
+      else if (lowercaseFilename.match(/\.(js|jsx)$/)) {
+        return 'text/javascript';
+      } else if (lowercaseFilename.match(/\.(ts|tsx)$/)) {
+        return 'text/typescript';
+      } else if (lowercaseFilename.match(/\.css$/)) {
+        return 'text/css';
+      } else if (lowercaseFilename.match(/\.html?$/)) {
+        return 'text/html';
+      } else if (lowercaseFilename.match(/\.json$/)) {
+        return 'application/json';
+      } else if (lowercaseFilename.match(/\.xml$/)) {
+        return 'application/xml';
+      } else if (lowercaseFilename.match(/\.csv$/)) {
+        return 'text/csv';
       }
     }
     
-    // If filename detection fails, try URL detection
+    // Try to detect by URL if available
     if (url) {
-      if (url.match(/\.(jpg|jpeg)(\?|$)/i)) {
-        console.log('Detected JPEG from URL');
+      const urlLower = url.toLowerCase();
+      
+      // Check for Twilio media URLs - they often contain media IDs that we can use
+      if (urlLower.includes('media.') && urlLower.includes('twilio.com')) {
+        // For Twilio media, we need to make an educated guess based on context
+        // Since we know this came from a file upload that was validated as an image/video/audio
+        // and Twilio commonly strips filenames, we can try a different approach
+        
+        // Try to extract any file extension hints from the URL query parameters or path
+        const urlParts = url.split(/[?&]/);
+        for (const part of urlParts) {
+          if (part.includes('.jpg') || part.includes('.jpeg')) {
+            return 'image/jpeg';
+          } else if (part.includes('.png')) {
+            return 'image/png';
+          } else if (part.includes('.gif')) {
+            return 'image/gif';
+          } else if (part.includes('.webp')) {
+            return 'image/webp';
+          } else if (part.includes('.mp4')) {
+            return 'video/mp4';
+          } else if (part.includes('.webm')) {
+            return 'video/webm';
+          }
+        }
+        
+        // If no specific type found in URL, make educated guess based on common Twilio usage
+        // Most media uploads to Twilio chat are images, so default to image for unknown types
         return 'image/jpeg';
-      } else if (url.match(/\.png(\?|$)/i)) {
-        console.log('Detected PNG from URL');
-        return 'image/png';
-      } else if (url.match(/\.gif(\?|$)/i)) {
-        console.log('Detected GIF from URL');
-        return 'image/gif';
-      } else if (url.match(/\.webp(\?|$)/i)) {
-        console.log('Detected WebP from URL');
-        return 'image/webp';
+      }
+      
+      // General URL pattern detection
+      if (urlLower.includes('image') || urlLower.includes('photo') || urlLower.includes('pic')) {
+        return 'image/jpeg'; // Default image type
+      } else if (urlLower.includes('video') || urlLower.includes('movie')) {
+        return 'video/mp4'; // Default video type
+      } else if (urlLower.includes('audio') || urlLower.includes('sound')) {
+        return 'audio/mpeg'; // Default audio type
       }
     }
     
-    // For Twilio media URLs or when we can't detect, assume it's an image
-    // This is a reasonable assumption since we're in a chat context
-    if (url && url.includes('twilio.com')) {
-      console.log('Twilio media URL detected, defaulting to image/jpeg');
+    // Default to image/jpeg if we suspect it's an image based on filename patterns
+    if (filename && (filename.includes('image') || filename.includes('photo') || filename.includes('pic') || filename.includes('img'))) {
       return 'image/jpeg';
     }
     
-    console.log('Defaulting to image/jpeg');
-    return 'image/jpeg'; // Default for images
+    // Final fallback
+    return originalContentType || 'application/octet-stream';
+  };
+
+  // Helper function to determine if file type is supported for preview
+  const isPreviewableType = (contentType: string): boolean => {
+    return contentType.startsWith('image/') || 
+           contentType.startsWith('video/') || 
+           contentType.startsWith('audio/') ||
+           contentType === 'application/pdf' ||
+           contentType.startsWith('text/');
+  };
+
+  // Helper function to get file type category
+  const getFileTypeCategory = (contentType: string): 'image' | 'video' | 'audio' | 'document' | 'archive' | 'code' | 'other' => {
+    if (!contentType) {
+      return 'other';
+    }
+    
+    if (contentType.startsWith('image/')) {
+      return 'image';
+    }
+    if (contentType.startsWith('video/')) {
+      return 'video';
+    }
+    if (contentType.startsWith('audio/')) {
+      return 'audio';
+    }
+    if (contentType.includes('pdf') || contentType.includes('document') || contentType.includes('word') || contentType.includes('excel') || contentType.includes('powerpoint') || contentType.startsWith('text/')) {
+      return 'document';
+    }
+    if (contentType.includes('zip') || contentType.includes('rar') || contentType.includes('archive') || contentType.includes('compressed')) {
+      return 'archive';
+    }
+    if (contentType.includes('javascript') || contentType.includes('typescript') || contentType.includes('css') || contentType.includes('html') || contentType.includes('json') || contentType.includes('xml')) {
+      return 'code';
+    }
+    
+    return 'other';
+  };
+
+  // Helper function to validate file before upload
+  const validateFile = (file: File): { valid: boolean; error?: string; correctedType?: string } => {
+    // Size validation
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    if (file.size > maxSize) {
+      return { valid: false, error: 'File size must be less than 25MB' };
+    }
+
+    // Type validation and correction
+    let correctedType = file.type;
+    if (!file.type || file.type === 'application/octet-stream') {
+      correctedType = getCorrectContentType(file.type, file.name);
+    }
+
+    const allowedTypes = [
+      // Images
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff',
+      // Videos
+      'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/x-flv', 'video/x-ms-wmv', 'video/x-m4v',
+      // Audio
+      'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/aac', 'audio/flac', 'audio/mp4',
+      // Documents
+      'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ];
+
+    if (!allowedTypes.includes(correctedType)) {
+      return { 
+        valid: false, 
+        error: `File type "${correctedType}" is not supported. Please upload images, videos, audio files, or documents.` 
+      };
+    }
+
+    return { valid: true, correctedType };
+  };
+
+  // Helper function to format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Auto-scroll to bottom when messages change
@@ -135,15 +343,38 @@ const Chat = () => {
     }
   };
 
+  const [isBlocked, setIsBlocked] = useState(false);
+
   useEffect(() => {
     // First, try to use cached data from navigation state
-    const cachedUserData = location.state as { userName?: string; userProfilePicture?: string } | null;
+    const cachedUserData = location.state as { 
+      userName?: string; 
+      userProfilePicture?: string; 
+      isBlocked?: boolean;
+      Question1?: { Question: string; Answer: string };
+      Question2?: { Question: string; Answer: string };
+      Question3?: { Question: string; Answer: string };
+    } | null;
     
     if (cachedUserData?.userName) {
       setUserInfo({
         name: cachedUserData.userName,
         profilePicture: cachedUserData.userProfilePicture || null
       });
+    }
+
+    // Set questions data from navigation state
+    if (cachedUserData && (cachedUserData.Question1 || cachedUserData.Question2 || cachedUserData.Question3)) {
+      setUserQuestions({
+        Question1: cachedUserData.Question1,
+        Question2: cachedUserData.Question2,
+        Question3: cachedUserData.Question3
+      });
+    }
+
+    // Set blocked status from navigation state
+    if (cachedUserData?.isBlocked !== undefined) {
+      setIsBlocked(cachedUserData.isBlocked);
     }
 
     const fetchUserProfile = async () => {
@@ -466,7 +697,6 @@ const Chat = () => {
                     size: mediaObject.size || 0,
                     url: mediaUrl.url || mediaUrl
                   };
-                    console.log('Created mediaInfo from getTemporaryContentUrlsForAttachedMedia:', mediaInfo);
                   }
                 }
               } catch (error) {
@@ -486,13 +716,14 @@ const Chat = () => {
                   const mediaUrl = await media.getContentTemporaryUrl();
                   console.log('Got media URL:', mediaUrl);
                   
+                  const detectedContentType = getCorrectContentType(media.contentType || '', media.filename || '', mediaUrl);
+                  
                   mediaInfo = {
                     filename: media.filename || 'attachment',
-                    contentType: getCorrectContentType(media.contentType || '', media.filename || '', mediaUrl),
+                    contentType: detectedContentType,
                     size: media.size || 0,
                     url: mediaUrl
                   };
-                  console.log('Created mediaInfo:', mediaInfo);
                 } catch (error) {
                   console.error('Error getting media URL from attachedMedia:', error);
                   
@@ -709,12 +940,17 @@ const Chat = () => {
           size: selectedFile.size
         });
         
-        // Ensure the file has the correct MIME type
-        const fileWithCorrectType = new File([selectedFile], selectedFile.name, {
-          type: selectedFile.type || 'image/jpeg', // Default to image/jpeg if type is missing
-          lastModified: selectedFile.lastModified
-        });
-        console.log('File with correct type:', fileWithCorrectType.type);
+        // Ensure the file has the correct MIME type (selectedFile should already be corrected from handleFileSelect)
+        let fileWithCorrectType = selectedFile;
+        
+        // Double-check MIME type detection
+        if (!selectedFile.type || selectedFile.type === 'application/octet-stream') {
+          const correctedType = getCorrectContentType(selectedFile.type, selectedFile.name);
+          fileWithCorrectType = new File([selectedFile], selectedFile.name, {
+            type: correctedType,
+            lastModified: selectedFile.lastModified
+          });
+        }
         
         // Debug: Check what methods are available on the conversation for sending
         const conversationMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(conversation));
@@ -815,31 +1051,39 @@ const Chat = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Check file size (limit to 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File size must be less than 10MB');
+    // Validate file using helper function
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      setError(validation.error || 'Invalid file');
       return;
     }
 
-    // Check file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm'];
-    if (!allowedTypes.includes(file.type)) {
-      setError('Only images and videos are allowed');
-      return;
+    const correctedType = validation.correctedType || file.type;
+
+    // Create a new File object with the corrected MIME type if needed
+    let processedFile = file;
+    if (correctedType !== file.type) {
+      processedFile = new File([file], file.name, {
+        type: correctedType,
+        lastModified: file.lastModified
+      });
     }
 
-    setSelectedFile(file);
+    setSelectedFile(processedFile);
     
     // Create preview for images
-    if (file.type.startsWith('image/')) {
+    if (correctedType.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (e) => {
         setFilePreview(e.target?.result as string);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(processedFile);
     } else {
       setFilePreview(null);
     }
+
+    // Clear any previous errors
+    setError(null);
   };
 
   const handleRemoveFile = () => {
@@ -929,47 +1173,118 @@ const Chat = () => {
       
       {/* Header */}
       <div className="relative z-10 border-b border-white/10 bg-white/5 backdrop-blur-2xl sticky top-0">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex items-center">
-          <Button 
-            onClick={() => navigate(-1)}
-            variant="ghost" 
-            className="text-white/80 hover:text-white hover:bg-white/10 mr-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-          
-          <div className="flex items-center space-x-3">
-            <Avatar className="w-14 h-14 ring-2 ring-white/20">
-              {userInfo?.profilePicture ? (
-                <AvatarImage src={userInfo.profilePicture} />
-              ) : (
-                <AvatarFallback className="bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold">
-                  {userInfo?.name?.charAt(0) || <User className="w-6 h-6" />}
-                </AvatarFallback>
-              )}
-            </Avatar>
-            <div>
-              <h1 className="text-lg font-semibold text-white amazon-font">
-                {userInfo?.name || 'Loading...'}
-              </h1>
-              {isLoadingMessages && (
-                <div className="flex items-center space-x-2 mt-1">
-                  <div className="animate-spin rounded-full h-3 w-3 border-b border-white/40"></div>
-                  <span className="text-xs text-white/60">Loading messages...</span>
-                </div>
-              )}
+        <div className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
+          <div className="flex items-center">
+            <Button 
+              onClick={() => navigate(-1)}
+              variant="ghost" 
+              className="text-white/80 hover:text-white hover:bg-white/10 mr-4"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            
+            <div 
+              className="flex items-center space-x-3 cursor-pointer hover:bg-white/5 rounded-lg p-2 transition-all duration-300"
+              onClick={() => setShowUserProfile(true)}
+            >
+              <Avatar className="w-14 h-14 ring-2 ring-white/20">
+                {userInfo?.profilePicture ? (
+                  <AvatarImage src={userInfo.profilePicture} />
+                ) : (
+                  <AvatarFallback className="bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold">
+                    {userInfo?.name?.charAt(0) || <User className="w-6 h-6" />}
+                  </AvatarFallback>
+                )}
+              </Avatar>
+              <div>
+                <h1 className="text-lg font-semibold text-white amazon-font">
+                  {userInfo?.name || 'Loading...'}
+                </h1>
+                {isLoadingMessages && (
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b border-white/40"></div>
+                    <span className="text-xs text-white/60">Loading messages...</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* User Profile Modal */}
+      <Dialog open={showUserProfile} onOpenChange={setShowUserProfile}>
+        <DialogContent className="max-w-4xl bg-slate-900/95 backdrop-blur-xl border border-white/10 text-white max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="text-2xl font-bold text-white mb-4">{userInfo?.name || 'User Profile'}</DialogTitle>
+          
+          <div className="space-y-6">
+            {/* User Info */}
+            <div className="flex items-start gap-4">
+              <Avatar className="w-20 h-20 ring-2 ring-white/20">
+                {userInfo?.profilePicture ? (
+                  <AvatarImage src={userInfo.profilePicture} />
+                ) : (
+                  <AvatarFallback className="bg-gradient-to-br from-violet-500 to-purple-500 text-white font-semibold text-xl">
+                    {userInfo?.name?.charAt(0) || <User className="w-8 h-8" />}
+                  </AvatarFallback>
+                )}
+              </Avatar>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-white mb-2">{userInfo?.name}</h2>
+              </div>
+            </div>
+
+            {/* Personal Insights - Questions & Answers */}
+            {userQuestions && (userQuestions.Question1 || userQuestions.Question2 || userQuestions.Question3) && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white mb-3">Personal Insights</h3>
+                
+                {userQuestions.Question1 && (
+                  <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
+                    <h4 className="text-sm font-medium text-white/90 mb-2">{userQuestions.Question1.Question}</h4>
+                    <p className="text-white/70 text-sm leading-relaxed">{userQuestions.Question1.Answer}</p>
+                  </div>
+                )}
+                
+                {userQuestions.Question2 && (
+                  <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
+                    <h4 className="text-sm font-medium text-white/90 mb-2">{userQuestions.Question2.Question}</h4>
+                    <p className="text-white/70 text-sm leading-relaxed">{userQuestions.Question2.Answer}</p>
+                  </div>
+                )}
+                
+                {userQuestions.Question3 && (
+                  <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
+                    <h4 className="text-sm font-medium text-white/90 mb-2">{userQuestions.Question3.Question}</h4>
+                    <p className="text-white/70 text-sm leading-relaxed">{userQuestions.Question3.Answer}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Photo Carousel would go here if we had access to user's images */}
+            
+          </div>
+          
+          <div className="flex justify-end mt-6">
+            <Button
+              onClick={() => setShowUserProfile(false)}
+              variant="outline"
+              className="border-white/20 text-white/80 hover:bg-white/10"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Chat Messages */}
       <div className="relative z-10 max-w-3xl mx-auto px-6 py-8">
         <Card 
           className="bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden relative"
           style={{
-            backgroundImage: 'url(/chat_background.png)',
+            backgroundImage: assets.chatBackground ? `url(${assets.chatBackground})` : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center bottom',
             backgroundRepeat: 'no-repeat',
@@ -996,91 +1311,224 @@ const Chat = () => {
                     }`}
                   >
                     {(() => {
-                      // Debug media message
-                      if (message.media) {
-                        console.log('Rendering media message:', message.media);
-                        console.log('Media URL available:', !!message.media.url);
-                        console.log('Media content type:', message.media.contentType);
-                        console.log('Media filename:', message.media.filename);
-                        console.log('Is image?', message.media.contentType && message.media.contentType.startsWith('image/'));
-                        
-                        // Additional debugging for platform-specific issues
-                        console.log('Platform detection - User Agent:', navigator.userAgent);
-                        console.log('Platform detection - Platform:', navigator.platform);
-                      }
+
                       
                       return message.media ? (
                         <div className="space-y-2">
-                          {message.media.contentType && message.media.contentType.startsWith('image/') ? (
-                            <div className="relative">
-                              {message.media.url ? (
-                                <>
-                                  <img 
-                                    src={message.media.url} 
-                                    alt={message.media.filename || 'Image'}
-                                    className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                    style={{ maxHeight: '300px', minHeight: '100px' }}
-                                    onLoad={() => {
-                                      console.log('Image loaded successfully:', message.media.url);
-                                      // Scroll to bottom when image loads
-                                      setTimeout(scrollToBottom, 100);
-                                    }}
-                                    onError={(e) => {
-                                      console.error('Image failed to load:', message.media.url);
-                                      e.currentTarget.style.display = 'none';
-                                    }}
-                                    onClick={() => window.open(message.media.url, '_blank')}
-                                  />
-                                </>
-                              ) : (
-                                <div className="p-4 bg-red-500/20 rounded-lg border border-red-500/30">
-                                  <p className="text-red-300 text-sm">Image URL not available</p>
-                                  <p className="text-xs text-red-400 mt-1">{message.media.filename}</p>
-                                </div>
-                              )}
-                            </div>
-                          ) : message.media.contentType && message.media.contentType.startsWith('video/') ? (
-                            <div className="relative">
-                              {message.media.url ? (
-                                <>
-                                  <video 
-                                    src={message.media.url} 
-                                    controls
-                                    className="max-w-full h-auto rounded-lg"
-                                    style={{ maxHeight: '300px' }}
-                                    onLoadedData={() => {
-                                      // Scroll to bottom when video loads
-                                      setTimeout(scrollToBottom, 100);
-                                    }}
-                                    onError={(e) => {
-                                      console.error('Video failed to load:', message.media.url);
-                                    }}
-                                  />
-                                </>
-                              ) : (
-                                <div className="p-4 bg-red-500/20 rounded-lg border border-red-500/30">
-                                  <p className="text-red-300 text-sm">Video URL not available</p>
-                                  <p className="text-xs text-red-400 mt-1">{message.media.filename}</p>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center space-x-2 p-3 bg-white/10 rounded-lg border border-white/20">
-                              <Paperclip className="w-5 h-5 text-white/60" />
-                              <div>
-                                <span className="text-sm text-white/90">{message.media.filename || 'Attachment'}</span>
-                                <p className="text-xs text-white/60">
-                                  {message.media.size ? `${(message.media.size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
-                                </p>
-                                <p className="text-xs text-white/60">
-                                  Type: {message.media.contentType || 'Unknown'}
-                                </p>
-                                {!message.media.url && (
-                                  <p className="text-xs text-red-400">URL not available</p>
-                                )}
-                              </div>
-                            </div>
-                          )}
+                          {(() => {
+                            const fileCategory = getFileTypeCategory(message.media.contentType);
+                            const isPreviewable = isPreviewableType(message.media.contentType);
+                            
+                            switch (fileCategory) {
+                                                             case 'image':
+                                 return (
+                                   <div className="relative">
+                                     {message.media.url ? (
+                                       <>
+                                         <img 
+                                           src={message.media.url} 
+                                           alt={message.media.filename || 'Image'}
+                                           className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-lg"
+                                           style={{ maxHeight: '300px', minHeight: '100px' }}
+                                           onLoad={() => {
+                                             setTimeout(scrollToBottom, 100);
+                                           }}
+                                           onError={(e) => {
+                                             e.currentTarget.style.display = 'none';
+                                           }}
+                                           onClick={() => window.open(message.media.url, '_blank')}
+                                         />
+                                         <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm rounded px-2 py-1">
+                                           <p className="text-xs text-white/90">{message.media.filename}</p>
+                                         </div>
+                                       </>
+                                     ) : (
+                                       <div className="p-4 bg-red-500/20 rounded-lg border border-red-500/30">
+                                         <ImageIcon className="w-8 h-8 text-red-300 mx-auto mb-2" />
+                                         <p className="text-red-300 text-sm text-center">Image not available</p>
+                                         <p className="text-xs text-red-400 mt-1 text-center">{message.media.filename}</p>
+                                       </div>
+                                     )}
+                                   </div>
+                                 );
+                              
+                              case 'video':
+                                return (
+                                  <div className="relative">
+                                    {message.media.url ? (
+                                      <>
+                                        <video 
+                                          src={message.media.url} 
+                                          controls
+                                          className="max-w-full h-auto rounded-lg shadow-lg"
+                                          style={{ maxHeight: '300px' }}
+                                                                                     onLoadedData={() => {
+                                             setTimeout(scrollToBottom, 100);
+                                           }}
+                                          onError={(e) => {
+                                            console.error('Video failed to load:', message.media.url);
+                                          }}
+                                        />
+                                        <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm rounded px-2 py-1">
+                                          <p className="text-xs text-white/90">{message.media.filename}</p>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="p-4 bg-red-500/20 rounded-lg border border-red-500/30">
+                                        <div className="w-8 h-8 text-red-300 mx-auto mb-2">🎥</div>
+                                        <p className="text-red-300 text-sm text-center">Video not available</p>
+                                        <p className="text-xs text-red-400 mt-1 text-center">{message.media.filename}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              
+                              case 'audio':
+                                return (
+                                  <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                                    {message.media.url ? (
+                                      <>
+                                        <div className="flex items-center space-x-3 mb-3">
+                                          <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                                            <span className="text-green-400">🎵</span>
+                                          </div>
+                                          <div className="flex-1">
+                                            <p className="text-sm text-white/90 font-medium">{message.media.filename}</p>
+                                            <p className="text-xs text-white/60">
+                                              {message.media.size ? `${(message.media.size / 1024 / 1024).toFixed(2)} MB` : 'Audio file'}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <audio 
+                                          src={message.media.url} 
+                                          controls
+                                          className="w-full"
+                                          onLoadedData={() => {
+                                            setTimeout(scrollToBottom, 100);
+                                          }}
+                                          onError={(e) => {
+                                            console.error('Audio failed to load:', message.media.url);
+                                          }}
+                                        />
+                                      </>
+                                    ) : (
+                                      <div className="text-center">
+                                        <div className="w-8 h-8 text-red-300 mx-auto mb-2">🎵</div>
+                                        <p className="text-red-300 text-sm">Audio not available</p>
+                                        <p className="text-xs text-red-400 mt-1">{message.media.filename}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              
+                              case 'document':
+                                return (
+                                  <div className="bg-white/10 rounded-lg p-4 border border-white/20 hover:bg-white/15 transition-colors cursor-pointer"
+                                    onClick={() => message.media.url && window.open(message.media.url, '_blank')}
+                                  >
+                                    <div className="flex items-center space-x-3">
+                                      <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                                        {message.media.contentType.includes('pdf') ? (
+                                          <span className="text-blue-400">📄</span>
+                                        ) : message.media.contentType.includes('word') ? (
+                                          <span className="text-blue-400">📝</span>
+                                        ) : message.media.contentType.includes('excel') ? (
+                                          <span className="text-green-400">📊</span>
+                                        ) : message.media.contentType.includes('powerpoint') ? (
+                                          <span className="text-orange-400">📽️</span>
+                                        ) : (
+                                          <span className="text-blue-400">📄</span>
+                                        )}
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-sm text-white/90 font-medium">{message.media.filename}</p>
+                                        <p className="text-xs text-white/60">
+                                          {message.media.size ? `${(message.media.size / 1024 / 1024).toFixed(2)} MB` : 'Document'}
+                                        </p>
+                                        <p className="text-xs text-blue-400">
+                                          {message.media.url ? 'Click to open' : 'Not available'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              
+                              case 'archive':
+                                return (
+                                  <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                                    <div className="flex items-center space-x-3">
+                                      <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                                        <span className="text-purple-400">🗜️</span>
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-sm text-white/90 font-medium">{message.media.filename}</p>
+                                        <p className="text-xs text-white/60">
+                                          {message.media.size ? `${(message.media.size / 1024 / 1024).toFixed(2)} MB` : 'Archive'}
+                                        </p>
+                                        <p className="text-xs text-purple-400">
+                                          {message.media.url ? (
+                                            <a href={message.media.url} download className="hover:underline">
+                                              Click to download
+                                            </a>
+                                          ) : 'Not available'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              
+                              case 'code':
+                                return (
+                                  <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-600/30">
+                                    <div className="flex items-center space-x-3">
+                                      <div className="w-10 h-10 bg-slate-600/30 rounded-lg flex items-center justify-center">
+                                        <span className="text-slate-300">💻</span>
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-sm text-white/90 font-medium font-mono">{message.media.filename}</p>
+                                        <p className="text-xs text-white/60">
+                                          {message.media.size ? `${(message.media.size / 1024).toFixed(1)} KB` : 'Code file'}
+                                        </p>
+                                        <p className="text-xs text-slate-400">
+                                          {message.media.url ? (
+                                            <a href={message.media.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                                              View code
+                                            </a>
+                                          ) : 'Not available'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              
+                                                             default:
+                                 return (
+                                   <div className="bg-white/10 rounded-lg p-4 border border-white/20">
+                                     <div className="flex items-center space-x-3">
+                                       <div className="w-10 h-10 bg-gray-500/20 rounded-lg flex items-center justify-center">
+                                         <Paperclip className="w-5 h-5 text-gray-400" />
+                                       </div>
+                                       <div className="flex-1">
+                                         <p className="text-sm text-white/90 font-medium">{message.media.filename || 'Attachment'}</p>
+                                         <p className="text-xs text-white/60">
+                                           {message.media.size ? `${(message.media.size / 1024 / 1024).toFixed(2)} MB` : 'File'}
+                                         </p>
+                                         <p className="text-xs text-white/60">
+                                           Type: {message.media.contentType || 'Unknown'}
+                                         </p>
+                                         <p className="text-xs text-gray-400">
+                                           {message.media.url ? (
+                                             <a href={message.media.url} download className="hover:underline">
+                                               Download file
+                                             </a>
+                                           ) : 'Not available'}
+                                         </p>
+                                       </div>
+                                     </div>
+                                   </div>
+                                 );
+                            }
+                          })()}
                           {message.body && message.body.trim() && <p className="text-sm mt-2">{message.body}</p>}
                         </div>
                       ) : (
@@ -1140,7 +1588,7 @@ const Chat = () => {
                   <div>
                     <p className="text-sm text-white/90">{selectedFile.name}</p>
                     <p className="text-xs text-white/60">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      {formatFileSize(selectedFile.size)} • {getFileTypeCategory(selectedFile.type)}
                     </p>
                   </div>
                 </div>
@@ -1152,7 +1600,7 @@ const Chat = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,video/*"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
                 onChange={handleFileSelect}
                 className="hidden"
               />
@@ -1160,7 +1608,13 @@ const Chat = () => {
                 onClick={handleAttachClick}
                 variant="outline"
                 size="sm"
-                className="bg-white/5 text-white/80 hover:bg-white/10 hover:text-white border-white/10 flex-shrink-0 w-10 h-10 p-0"
+                disabled={isBlocked}
+                className={`border-white/10 flex-shrink-0 w-10 h-10 p-0 ${
+                  isBlocked 
+                    ? "bg-gray-500/20 text-gray-400 cursor-not-allowed" 
+                    : "bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
+                }`}
+                title={isBlocked ? "This user has been blocked" : "Attach file"}
               >
                 <Paperclip className="w-4 h-4" />
               </Button>
@@ -1169,15 +1623,25 @@ const Chat = () => {
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type a message..."
-                className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white/90 placeholder:text-white/40 focus:outline-none focus:border-blue-500/50 text-sm"
+                placeholder={isBlocked ? "This user has been blocked" : "Type a message..."}
+                disabled={isBlocked}
+                className={`flex-1 min-w-0 border border-white/10 rounded-lg px-3 py-2 text-sm ${
+                  isBlocked 
+                    ? "bg-gray-500/20 text-gray-400 placeholder:text-gray-500 cursor-not-allowed" 
+                    : "bg-white/5 text-white/90 placeholder:text-white/40 focus:outline-none focus:border-blue-500/50"
+                }`}
               />
               <Button
                 onClick={handleSendMessage}
                 variant="outline"
                 size="sm"
-                disabled={isSending}
-                className="bg-blue-500/20 text-blue-100 hover:bg-blue-500/30 hover:text-blue-100 flex-shrink-0 w-10 h-10 p-0"
+                disabled={isSending || isBlocked}
+                className={`flex-shrink-0 w-10 h-10 p-0 ${
+                  isBlocked 
+                    ? "bg-red-500/20 text-red-100 hover:bg-red-500/30 cursor-not-allowed" 
+                    : "bg-blue-500/20 text-blue-100 hover:bg-blue-500/30 hover:text-blue-100"
+                }`}
+                title={isBlocked ? "This user has been blocked" : "Send message"}
               >
                 {isSending ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-100"></div>

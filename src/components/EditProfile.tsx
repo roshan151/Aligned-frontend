@@ -5,10 +5,17 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Save, X, Camera } from "lucide-react";
+import { User, Save, X, Camera, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { config } from "../config/api";
 import ImageUpload from "./ImageUpload";
+
+const hobbiesOptions = [
+  "Reading", "Traveling", "Cooking", "Sports", "Music", "Movies", 
+  "Photography", "Dancing", "Fitness", "Gaming", "Art", "Gardening",
+  "Writing", "Technology", "Fashion", "Yoga", "Swimming", "Hiking"
+];
 
 interface EditProfileProps {
   onCancel: () => void;
@@ -31,7 +38,7 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
     dob: '',
     tob: '',
     gender: '',
-    hobbies: ''
+    hobbies: [] as string[]
   });
   const { toast } = useToast();
 
@@ -59,8 +66,8 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
           tob: parsedData.TOB || parsedData.tob || '',
           gender: parsedData.GENDER || parsedData.gender || '',
           hobbies: Array.isArray(parsedData.HOBBIES || parsedData.hobbies) 
-            ? (parsedData.HOBBIES || parsedData.hobbies).join(', ')
-            : parsedData.HOBBIES || parsedData.hobbies || ''
+            ? (parsedData.HOBBIES || parsedData.hobbies)
+            : (parsedData.HOBBIES || parsedData.hobbies) ? (parsedData.HOBBIES || parsedData.hobbies).split(',').map((h: string) => h.trim()).filter((h: string) => h) : []
         });
       } catch (error) {
         console.error('Error parsing user data:', error);
@@ -73,6 +80,15 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
     setFormData(prev => ({
       ...prev,
       [name]: value
+    }));
+  };
+
+  const handleHobbyToggle = (hobby: string) => {
+    setFormData(prev => ({
+      ...prev,
+      hobbies: prev.hobbies.includes(hobby)
+        ? prev.hobbies.filter(h => h !== hobby)
+        : [...prev.hobbies, hobby]
     }));
   };
 
@@ -90,7 +106,7 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
       const metadata = {
         uid: userUID,
         ...formData,
-        hobbies: formData.hobbies.split(',').map(h => h.trim()).filter(h => h)
+        hobbies: formData.hobbies
       };
       formDataObj.append('metadata', JSON.stringify(metadata));
 
@@ -292,15 +308,53 @@ const EditProfile = ({ onCancel, onSave }: EditProfileProps) => {
                 />
               </div>
 
-              <div className="md:col-span-2 space-y-2">
-                <Label className="text-white">Hobbies (comma-separated)</Label>
-                <Textarea
-                  name="hobbies"
-                  value={formData.hobbies}
-                  onChange={handleInputChange}
-                  className="bg-white/10 border-white/20 text-white"
-                  placeholder="Enter hobbies separated by commas"
-                />
+              <div className="md:col-span-2 space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-white">Hobbies & Interests</Label>
+                  <p className="text-sm text-white/70">Select up to 5 hobbies or interests</p>
+                  <div className="grid grid-cols-3 lg:grid-cols-4 gap-2 max-h-[300px] overflow-y-auto p-3 bg-white/5 rounded-lg border border-white/10">
+                    {hobbiesOptions.map((hobby) => (
+                      <button
+                        key={hobby}
+                        type="button"
+                        onClick={() => handleHobbyToggle(hobby)}
+                        disabled={!formData.hobbies.includes(hobby) && formData.hobbies.length >= 5}
+                        className={cn(
+                          "group relative p-2 rounded-md text-left transition-all duration-200",
+                          "border hover:border-violet-500/50",
+                          "focus:outline-none focus:ring-1 focus:ring-violet-500 focus:ring-offset-1 focus:ring-offset-black",
+                          formData.hobbies.includes(hobby)
+                            ? "bg-gradient-to-br from-violet-500 to-purple-600 border-violet-500 text-white shadow-md shadow-violet-500/20"
+                            : "bg-white/5 border-white/10 text-white/90 hover:bg-white/10",
+                          !formData.hobbies.includes(hobby) && formData.hobbies.length >= 5 && "opacity-40 cursor-not-allowed hover:border-white/10 hover:bg-white/5"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-xs truncate">{hobby}</span>
+                          {formData.hobbies.includes(hobby) && (
+                            <div className="flex-shrink-0 ml-1">
+                              <Check className="h-3 w-3" />
+                            </div>
+                          )}
+                        </div>
+                        <div className={cn(
+                          "absolute inset-0 rounded-md transition-opacity duration-200",
+                          formData.hobbies.includes(hobby)
+                            ? "bg-gradient-to-br from-violet-500/20 to-purple-600/20 opacity-100"
+                            : "bg-gradient-to-br from-violet-500/0 to-purple-600/0 opacity-0 group-hover:opacity-100"
+                        )} />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-3 px-1">
+                    <p className="text-xs text-white/70">
+                      Selected: {formData.hobbies.length}/5 hobbies
+                    </p>
+                    {formData.hobbies.length >= 5 && (
+                      <span className="text-xs text-violet-300 font-medium">Maximum limit reached</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 

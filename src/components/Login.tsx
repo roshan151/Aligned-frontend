@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Mail, Heart, Lock, Eye, EyeOff } from "lucide-react";
 import { config } from "../config/api";
 import { useToast } from "@/components/ui/use-toast";
+import { useS3Assets } from "../hooks/useS3Assets";
 
 interface LoginProps {
   setIsLoggedIn: (value: boolean) => void;
@@ -21,6 +22,7 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
+  const { assets } = useS3Assets();
 
   const fetchUserProfile = async (uid: string) => {
     try {
@@ -91,12 +93,16 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
         // Clear Destiny chat session storage flags
         sessionStorage.removeItem('destinyChatDismissed');
         sessionStorage.removeItem('destinyChatCompleted');
+        sessionStorage.removeItem('destinyUserHasChatted');
         
         // Extract email, phone, UID and notifications from login response
         const loginData = {
           uid: data.UID,
           email: data.EMAIL || data.email || email, // Use login response email or fallback to login email
           phone: data.PHONE || data.phone || '',
+          newNotifications: data.NEW_NOTIFICATIONS || [],
+          oldNotifications: data.OLD_NOTIFICATIONS || [],
+          // Keep backward compatibility
           notifications: data.NOTIFICATIONS || []
         };
         
@@ -125,7 +131,7 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
     <div 
       className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4"
       style={{
-        backgroundImage: 'url(/login_page_bg.png)',
+        backgroundImage: assets.loginBackground ? `url(${assets.loginBackground})` : undefined,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat'
@@ -140,20 +146,21 @@ const Login = ({ setIsLoggedIn, setUserUID, onSuccessfulLogin }: LoginProps) => 
           <div className="relative mx-auto">
             <div className="absolute -inset-4 bg-gradient-to-r from-violet-500 to-purple-500 rounded-2xl blur opacity-20"></div>
             <div className="relative w-20 h-20 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-2xl border border-white/20 overflow-hidden">
-              <img 
-                src="/logo.png" 
-                alt="Aligned Logo" 
-                className="w-18 h-18 object-cover scale-110"
-              />
+              {assets.logo ? (
+                <img 
+                  src={assets.logo} 
+                  alt="Aligned Logo" 
+                  className="w-18 h-18 object-cover scale-110"
+                />
+              ) : (
+                <Heart className="w-8 h-8 text-white" />
+              )}
             </div>
           </div>
           <div>
-            <CardTitle className="text-3xl font-bold text-white mb-2 amazon-font">
+            <CardTitle className="text-4xl font-bold text-white mb-2 font-['Lavanderia']">
               Welcome to Aligned
             </CardTitle>
-            <CardDescription className="text-white/60 font-medium">
-              Sign in to find your perfect match
-            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">

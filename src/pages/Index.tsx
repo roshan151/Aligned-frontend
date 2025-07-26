@@ -110,6 +110,28 @@ const Index = () => {
       }
     }
 
+    // Handle FILTERS field
+    let filters: string[] = [];
+    if (data.FILTERS || data.filters) {
+      try {
+        const filtersData = data.FILTERS || data.filters;
+        if (Array.isArray(filtersData)) {
+          filters = filtersData;
+        } else if (typeof filtersData === 'string') {
+          // If it's a JSON string, parse it
+          if (filtersData.startsWith('[') || filtersData.startsWith('{')) {
+            filters = JSON.parse(filtersData);
+          } else {
+            // If it's comma-separated, split it
+            filters = filtersData.split(',').map((f: string) => f.trim());
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing FILTERS data:', error);
+        filters = [];
+      }
+    }
+
     let dob = '';
     if (data.DOB || data.dob) {
       try {
@@ -208,7 +230,11 @@ const Index = () => {
       hobbies: hobbies,
       images: images,
       login: data.LOGIN || data.login || '',
-      user_align: data.user_align || false
+      user_align: data.user_align || false,
+      FILTERS: filters, // Added FILTERS field
+      Question1: data.Question1,
+      Question2: data.Question2,
+      Question3: data.Question3
     };
   };
 
@@ -224,6 +250,28 @@ const Index = () => {
         hobbies = typeof loginData.hobbies === 'string' 
           ? loginData.hobbies.split(',').map((h: string) => h.trim()) 
           : [];
+      }
+    }
+
+    // Handle FILTERS field from login data
+    let filters: string[] = [];
+    if (loginData.FILTERS || loginData.filters) {
+      try {
+        const filtersData = loginData.FILTERS || loginData.filters;
+        if (Array.isArray(filtersData)) {
+          filters = filtersData;
+        } else if (typeof filtersData === 'string') {
+          // If it's a JSON string, parse it
+          if (filtersData.startsWith('[') || filtersData.startsWith('{')) {
+            filters = JSON.parse(filtersData);
+          } else {
+            // If it's comma-separated, split it
+            filters = filtersData.split(',').map((f: string) => f.trim());
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing FILTERS data from login:', error);
+        filters = [];
       }
     }
 
@@ -318,7 +366,8 @@ const Index = () => {
       tob: '',
       hobbies: hobbies,
       images: images,
-      login: 'SUCCESSFUL'
+      login: 'SUCCESSFUL',
+      FILTERS: filters // Added FILTERS field
     };
   };
 
@@ -400,20 +449,59 @@ const Index = () => {
       uid: finalUID,
       email: loginData.email || '',
       phone: loginData.phone || '',
+      newNotifications: loginData.newNotifications || [],
+      oldNotifications: loginData.oldNotifications || [],
+      // Keep backward compatibility
       notifications: loginData.notifications || []
     };
     
-    // Store notifications from login response
-    if (loginDataWithProfile.notifications && Array.isArray(loginDataWithProfile.notifications)) {
-      console.log('Setting system notifications from login:', loginDataWithProfile.notifications);
+    // Process notifications from login response
+    const processNotifications = () => {
+      const allNotifications = [];
+      
+      // Handle new API format
+      if (loginData.newNotifications && Array.isArray(loginData.newNotifications)) {
+        // Mark new notifications with isNew flag
+        const newNotifs = loginData.newNotifications.map(notification => ({
+          ...notification,
+          isNew: true
+        }));
+        allNotifications.push(...newNotifs);
+        console.log('Found new notifications:', newNotifs.length);
+      }
+      
+      if (loginData.oldNotifications && Array.isArray(loginData.oldNotifications)) {
+        // Mark old notifications with isNew: false
+        const oldNotifs = loginData.oldNotifications.map(notification => ({
+          ...notification,
+          isNew: false
+        }));
+        allNotifications.push(...oldNotifs);
+        console.log('Found old notifications:', oldNotifs.length);
+      }
+      
+      // Fallback to old format for backward compatibility
+      if (allNotifications.length === 0 && loginData.notifications && Array.isArray(loginData.notifications)) {
+        const legacyNotifs = loginData.notifications.map(notification => ({
+          ...notification,
+          isNew: false // Treat legacy notifications as old by default
+        }));
+        allNotifications.push(...legacyNotifs);
+        console.log('Using legacy notifications format:', legacyNotifs.length);
+      }
+      
       // Remove duplicates based on message and updated timestamp
-      const uniqueNotifications = loginDataWithProfile.notifications.filter((notification, index, self) =>
+      const uniqueNotifications = allNotifications.filter((notification, index, self) =>
         index === self.findIndex((n) => 
           n.message === notification.message && n.updated === notification.updated
         )
       );
+      
+      console.log('Setting system notifications from login:', uniqueNotifications);
       setSystemNotifications(uniqueNotifications);
-    }
+    };
+    
+    processNotifications();
 
     // Store the login data with email and phone
     localStorage.setItem('userData', JSON.stringify(loginDataWithProfile));

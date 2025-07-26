@@ -8,13 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { Heart, Check, X, Calendar as CalendarIcon, Eye, EyeOff, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { config } from "../config/api";
 import ImageUpload from "./ImageUpload";
 import DateRoller from "./DateRoller";
+import AutocompleteInput from "./AutocompleteInput";
 import { countries, getCitiesForCountry } from "../data/locations";
+import { useS3Assets } from "../hooks/useS3Assets";
 
 const hobbiesOptions = [
   "Reading", "Traveling", "Cooking", "Sports", "Music", "Movies", 
@@ -27,12 +30,14 @@ const steps = [
   { id: 2, title: "Location", description: "Where are you from?" },
   { id: 3, title: "Birth Details", description: "Your birth information" },
   { id: 4, title: "Interests", description: "What do you enjoy?" },
-  { id: 5, title: "Photos", description: "Upload your pictures" }
+  { id: 5, title: "Photos", description: "Upload your pictures" },
+  { id: 6, title: "Personal Questions", description: "Tell us more about yourself" }
 ];
 
 const MultiStepRegister = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
+  const { assets } = useS3Assets();
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -48,6 +53,9 @@ const MultiStepRegister = () => {
     tob: "",
     gender: "",
     hobbies: [] as string[],
+    question1Answer: "",
+    question2Answer: "",
+    question3Answer: "",
   });
   const [images, setImages] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -136,6 +144,8 @@ const MultiStepRegister = () => {
         return formData.hobbies.length > 0;
       case 5:
         return images.length > 0;
+      case 6:
+        return formData.question1Answer.trim() && formData.question2Answer.trim() && formData.question3Answer.trim();
       default:
         return false;
     }
@@ -156,7 +166,7 @@ const MultiStepRegister = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(5)) {
+    if (!validateStep(6)) {
       setError('Please complete all required fields');
       return;
     }
@@ -179,6 +189,18 @@ const MultiStepRegister = () => {
         tob: formData.tob,
         gender: formData.gender,
         hobbies: formData.hobbies,
+        Question1: {
+          Question: "What does your ideal date look like?",
+          Answer: formData.question1Answer
+        },
+        Question2: {
+          Question: "What comforts you the most at the end of a tough day?",
+          Answer: formData.question2Answer
+        },
+        Question3: {
+          Question: "What kind of life do you imagine with your ideal partner?",
+          Answer: formData.question3Answer
+        }
       };
 
       const formDataToSend = new FormData();
@@ -337,49 +359,24 @@ const MultiStepRegister = () => {
         return (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="country" className="text-sm font-medium text-white">Country *</Label>
-                <Select value={formData.country} onValueChange={(value) => handleInputChange('country', value)}>
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder="Select your country" className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {countries.map((country) => (
-                      <SelectItem 
-                        key={country} 
-                        value={country} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {country}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="Country"
+                placeholder="Type to search countries..."
+                options={countries}
+                value={formData.country}
+                onChange={(value) => handleInputChange('country', value)}
+                required={true}
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="city" className="text-sm font-medium text-white">City *</Label>
-                <Select 
-                  value={formData.city} 
-                  onValueChange={(value) => handleInputChange('city', value)}
-                  disabled={!formData.country}
-                >
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder={formData.country ? "Select your city" : "Select country first"} className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {availableCities.map((city) => (
-                      <SelectItem 
-                        key={city} 
-                        value={city} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="City"
+                placeholder={formData.country ? "Type to search cities..." : "Select country first"}
+                options={availableCities}
+                value={formData.city}
+                onChange={(value) => handleInputChange('city', value)}
+                disabled={!formData.country}
+                required={true}
+              />
             </div>
 
             <div className="space-y-2">
@@ -400,49 +397,24 @@ const MultiStepRegister = () => {
         return (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="birth_country" className="text-sm font-medium text-white">Country of Birth *</Label>
-                <Select value={formData.birth_country} onValueChange={(value) => handleInputChange('birth_country', value)}>
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder="Select country of birth" className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {countries.map((country) => (
-                      <SelectItem 
-                        key={country} 
-                        value={country} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {country}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="Country of Birth"
+                placeholder="Type to search countries..."
+                options={countries}
+                value={formData.birth_country}
+                onChange={(value) => handleInputChange('birth_country', value)}
+                required={true}
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="birth_city" className="text-sm font-medium text-white">City of Birth *</Label>
-                <Select 
-                  value={formData.birth_city} 
-                  onValueChange={(value) => handleInputChange('birth_city', value)}
-                  disabled={!formData.birth_country}
-                >
-                  <SelectTrigger className="h-11 bg-white/10 backdrop-blur-sm border-white/30 text-white">
-                    <SelectValue placeholder={formData.birth_country ? "Select city of birth" : "Select country first"} className="text-black/60 data-[state=checked]:text-violet-900" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px] z-50 bg-white border border-gray-200">
-                    {availableBirthCities.map((city) => (
-                      <SelectItem 
-                        key={city} 
-                        value={city} 
-                        className="!text-black hover:outline hover:outline-1 hover:outline-violet-500 data-[state=checked]:bg-violet-500 data-[state=checked]:text-white"
-                      >
-                        {city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <AutocompleteInput
+                label="City of Birth"
+                placeholder={formData.birth_country ? "Type to search cities..." : "Select country first"}
+                options={availableBirthCities}
+                value={formData.birth_city}
+                onChange={(value) => handleInputChange('birth_city', value)}
+                disabled={!formData.birth_country}
+                required={true}
+              />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -557,6 +529,82 @@ const MultiStepRegister = () => {
           </div>
         );
 
+      case 6:
+        return (
+          <div className="space-y-6">
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="question1" className="text-sm font-medium text-white">
+                  What does your ideal date look like? *
+                </Label>
+                <Textarea
+                  id="question1"
+                  value={formData.question1Answer}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 4000) {
+                      handleInputChange('question1Answer', value);
+                    }
+                  }}
+                  className="min-h-[120px] bg-white/10 backdrop-blur-sm border-white/30 text-white placeholder:text-white/60 focus:border-white/50 resize-none"
+                  placeholder="Describe your ideal date experience..."
+                  maxLength={4000}
+                />
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>Share your thoughts about the perfect romantic experience</span>
+                  <span>{formData.question1Answer.length}/4000 characters</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="question2" className="text-sm font-medium text-white">
+                  What comforts you the most at the end of a tough day? *
+                </Label>
+                <Textarea
+                  id="question2"
+                  value={formData.question2Answer}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 4000) {
+                      handleInputChange('question2Answer', value);
+                    }
+                  }}
+                  className="min-h-[120px] bg-white/10 backdrop-blur-sm border-white/30 text-white placeholder:text-white/60 focus:border-white/50 resize-none"
+                  placeholder="Tell us what brings you peace and comfort..."
+                  maxLength={4000}
+                />
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>Help us understand what makes you feel at ease</span>
+                  <span>{formData.question2Answer.length}/4000 characters</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="question3" className="text-sm font-medium text-white">
+                  What kind of life do you imagine with your ideal partner? *
+                </Label>
+                <Textarea
+                  id="question3"
+                  value={formData.question3Answer}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.length <= 4000) {
+                      handleInputChange('question3Answer', value);
+                    }
+                  }}
+                  className="min-h-[120px] bg-white/10 backdrop-blur-sm border-white/30 text-white placeholder:text-white/60 focus:border-white/50 resize-none"
+                  placeholder="Paint a picture of your future together..."
+                  maxLength={4000}
+                />
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>Describe your vision of a shared future</span>
+                  <span>{formData.question3Answer.length}/4000 characters</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -566,7 +614,7 @@ const MultiStepRegister = () => {
     <div 
       className="min-h-screen bg-gradient-to-br from-purple-600 via-violet-600 to-purple-800 flex items-center justify-center p-4"
       style={{
-        backgroundImage: 'url(/login_page_bg.png)',
+        backgroundImage: assets.loginBackground ? `url(${assets.loginBackground})` : undefined,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat'
@@ -579,11 +627,15 @@ const MultiStepRegister = () => {
           <div className="relative mx-auto">
             <div className="absolute -inset-4 bg-gradient-to-r from-violet-500 to-purple-500 rounded-2xl blur opacity-20"></div>
             <div className="relative w-20 h-20 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-2xl border border-white/20 overflow-hidden">
-              <img 
-                src="/logo.png" 
-                alt="Aligned Logo" 
-                className="w-18 h-18 object-cover scale-110"
-              />
+              {assets.logo ? (
+                <img 
+                  src={assets.logo} 
+                  alt="Aligned Logo" 
+                  className="w-18 h-18 object-cover scale-110"
+                />
+              ) : (
+                <Heart className="w-6 h-6 text-white" />
+              )}
             </div>
           </div>
           <div>
@@ -666,7 +718,7 @@ const MultiStepRegister = () => {
                 <Button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={isLoading || !validateStep(5)}
+                  disabled={isLoading || !validateStep(6)}
                   className="bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 text-white font-medium"
                 >
                   {isLoading ? "Creating Account..." : "Create Account"}

@@ -20,6 +20,10 @@ interface ProfileData {
   hobbies?: string[];
   images?: string[];
   login?: string;
+  FILTERS?: string[]; // Added FILTERS field
+  Question1?: { Question: string; Answer: string };
+  Question2?: { Question: string; Answer: string };
+  Question3?: { Question: string; Answer: string };
 }
 
 interface ProfilePageProps {
