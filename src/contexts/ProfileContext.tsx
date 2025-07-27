@@ -18,6 +18,8 @@ interface ProfileData {
   images?: string[];
   login?: string;
   FILTERS?: string[];
+  MBTI?: string;
+  MBTI_DESCRIPTION?: string;
   Question1?: { Question: string; Answer: string };
   Question2?: { Question: string; Answer: string };
   Question3?: { Question: string; Answer: string };
@@ -105,6 +107,8 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       hobbies: hobbies,
       images: data.IMAGES || data.images || [],
       FILTERS: filters,
+      MBTI: data.MBTI || data.mbti || '',
+      MBTI_DESCRIPTION: data.MBTI_DESCRIPTION || data.mbti_description || '',
       Question1: data.Question1 || {},
       Question2: data.Question2 || {},
       Question3: data.Question3 || {}

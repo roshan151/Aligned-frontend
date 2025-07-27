@@ -232,6 +232,8 @@ const Index = () => {
       login: data.LOGIN || data.login || '',
       user_align: data.user_align || false,
       FILTERS: filters, // Added FILTERS field
+      MBTI: data.MBTI || data.mbti || '',
+      MBTI_DESCRIPTION: data.MBTI_DESCRIPTION || data.mbti_description || '',
       Question1: data.Question1,
       Question2: data.Question2,
       Question3: data.Question3
@@ -367,7 +369,9 @@ const Index = () => {
       hobbies: hobbies,
       images: images,
       login: 'SUCCESSFUL',
-      FILTERS: filters // Added FILTERS field
+      FILTERS: filters, // Added FILTERS field
+      MBTI: loginData.MBTI || loginData.mbti || '',
+      MBTI_DESCRIPTION: loginData.MBTI_DESCRIPTION || loginData.mbti_description || ''
     };
   };
 

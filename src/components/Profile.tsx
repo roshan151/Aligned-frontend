@@ -41,6 +41,8 @@ interface ProfileData {
   images?: string[];
   login?: string;
   FILTERS?: string[]; // Added FILTERS field
+  MBTI?: string; // Personality type code
+  MBTI_DESCRIPTION?: string; // Personality description
   Question1?: { Question: string; Answer: string };
   Question2?: { Question: string; Answer: string };
   Question3?: { Question: string; Answer: string };
@@ -56,6 +58,7 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [signedImageUrls, setSignedImageUrls] = useState<string[]>([]);
+  const [removingFilters, setRemovingFilters] = useState<Set<string>>(new Set());
   
   const { profileData: contextProfileData, isRefreshing } = useProfileContext();
 
@@ -200,6 +203,9 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
   const removeFilter = async (filterToRemove: string) => {
     if (!profileData?.uid) return;
     
+    // Add filter to loading state
+    setRemovingFilters(prev => new Set(prev.add(filterToRemove)));
+    
     try {
       console.log('Removing filter:', filterToRemove);
       
@@ -249,6 +255,13 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
       }
     } catch (error) {
       console.error('Error removing filter:', error);
+    } finally {
+      // Remove filter from loading state
+      setRemovingFilters(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(filterToRemove);
+        return newSet;
+      });
     }
   };
 
@@ -362,6 +375,20 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                         <div>
                           <p className="text-sm text-white/60 font-medium">Career</p>
                           <p className="text-sm font-bold text-white">{profileData.profession}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {profileData?.MBTI && (
+                    <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20 hover:bg-white/15 transition-all duration-300 group">
+                      <div className="flex items-center justify-center md:justify-start gap-3">
+                        <div className="p-2 bg-purple-500/20 rounded-full group-hover:bg-purple-500/30 transition-colors">
+                          <Sparkles className="w-5 h-5 text-purple-300" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-white/60 font-medium">Personality</p>
+                          <p className="text-sm font-bold text-purple-300">{profileData.MBTI}</p>
                         </div>
                       </div>
                     </div>
@@ -523,7 +550,7 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
             </Card>
 
             {/* Personal Insights - Questions & Answers */}
-            {(profileData?.Question1 || profileData?.Question2 || profileData?.Question3) && (
+            {(profileData?.Question1 || profileData?.Question2 || profileData?.Question3 || (profileData?.MBTI_DESCRIPTION && profileData?.MBTI)) && (
               <Card className="border-0 shadow-2xl bg-white/10 backdrop-blur-xl border border-white/20 hover:shadow-3xl transition-all duration-500 group">
                 <CardHeader className="pb-6">
                   <CardTitle className="flex items-center text-2xl bg-gradient-to-r from-white to-violet-200 bg-clip-text text-transparent">
@@ -552,6 +579,21 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                     <div className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all duration-300">
                       <h4 className="text-lg font-semibold text-emerald-200 mb-3">{profileData.Question3.Question}</h4>
                       <p className="text-white/80 leading-relaxed">{profileData.Question3.Answer}</p>
+                    </div>
+                  )}
+                  
+                  {/* MBTI Personality Description */}
+                  {profileData?.MBTI_DESCRIPTION && profileData?.MBTI && (
+                    <div className="bg-gradient-to-r from-purple-500/20 to-indigo-500/20 backdrop-blur-sm rounded-xl p-6 border border-purple-400/30">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Sparkles className="w-5 h-5 text-purple-300" />
+                        <h4 className="text-lg font-semibold text-purple-200">Personality Type</h4>
+                      </div>
+                      <p className="text-white/80 leading-relaxed">
+                        <span className="font-semibold text-purple-300">{profileData.MBTI}</span>
+                        <span className="text-white/60"> : </span>
+                        <span className="italic">{profileData.MBTI_DESCRIPTION}</span>
+                      </p>
                     </div>
                   )}
                 </CardContent>
@@ -621,24 +663,35 @@ const Profile = ({ onEdit, cachedProfileData, isLoadingProfile }: ProfileProps) 
                       {profileData.FILTERS.map((filter, index) => (
                         <div 
                           key={index} 
-                          className="group relative flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-400/30 hover:from-blue-500/30 hover:to-cyan-500/30 hover:border-blue-400/50 transition-all duration-300 backdrop-blur-xl"
+                          className={`group relative flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-400/30 transition-all duration-300 backdrop-blur-xl ${
+                            removingFilters.has(filter) 
+                              ? 'opacity-75 cursor-wait' 
+                              : 'hover:from-blue-500/30 hover:to-cyan-500/30 hover:border-blue-400/50'
+                          }`}
                         >
                           <div className="flex items-center justify-center w-8 h-8 bg-blue-500/30 rounded-full border border-blue-400/50">
                             <span className="text-sm font-bold text-blue-200">{index + 1}</span>
                           </div>
                           <p className="text-white font-medium flex-1">{filter}</p>
                           
-                          {/* Cross button that appears on hover */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFilter(filter);
-                            }}
-                            className="opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center justify-center w-6 h-6 bg-red-500/80 hover:bg-red-500 rounded-full border border-red-400/50 hover:border-red-400 transition-all duration-200 hover:scale-110 shadow-lg hover:shadow-red-500/25"
-                            title="Remove filter"
-                          >
-                            <X className="w-3 h-3 text-white" />
-                          </button>
+                          {/* Cross button or loading spinner */}
+                          {removingFilters.has(filter) ? (
+                            <div className="absolute top-2 right-2 flex items-center justify-center w-6 h-6 bg-blue-500/80 rounded-full border border-blue-400/50 shadow-lg">
+                              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFilter(filter);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 absolute top-2 right-2 flex items-center justify-center w-6 h-6 bg-red-500/80 hover:bg-red-500 rounded-full border border-red-400/50 hover:border-red-400 transition-all duration-200 hover:scale-110 shadow-lg hover:shadow-red-500/25"
+                              title="Remove filter"
+                              disabled={removingFilters.has(filter)}
+                            >
+                              <X className="w-3 h-3 text-white" />
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>

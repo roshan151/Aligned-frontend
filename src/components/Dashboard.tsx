@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin, MessageCircle } from "lucide-react";
+import { Heart, Bell, Clock, Users, User, LogOut, Star, X, MapPin, MessageCircle, Sparkles } from "lucide-react";
 import { config } from "../config/api";
 import { S3_CONFIG } from "../config/s3";
 import UserActions from "./UserActions";
@@ -53,6 +53,8 @@ interface RecommendationCard {
   blocked_by_user?: boolean;
   reason?: string;
   filtered?: boolean; // Flag to track if card was filtered
+  MBTI?: string; // Personality type code
+  MBTI_DESCRIPTION?: string; // Personality description
   Question1?: {
     Question: string;
     Answer: string;
@@ -198,7 +200,9 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                 dob: profileData.DOB || profileData.dob,
                 blocked_by_match: rec.blocked_by_match || false,
                 blocked_by_user: rec.blocked_by_user || false,
-                reason: rec.reason
+                reason: rec.reason,
+                MBTI: rec.MBTI || profileData.MBTI,
+                MBTI_DESCRIPTION: rec.MBTI_DESCRIPTION || profileData.MBTI_DESCRIPTION
               };
             }
             return rec;
@@ -283,6 +287,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                   Question1: rec.Question1 || {},
                   Question2: rec.Question2 || {},
                   Question3: rec.Question3 || {},
+                  MBTI: rec.MBTI || profileData.MBTI,
+                  MBTI_DESCRIPTION: rec.MBTI_DESCRIPTION || profileData.MBTI_DESCRIPTION,
                   filtered: false // Set filtered to false for recommendations from filter refresh
                 };
                 console.log('Created enriched card:', enrichedCard);
@@ -507,6 +513,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
               Question1: card.Question1,
               Question2: card.Question2,
               Question3: card.Question3,
+              MBTI: card.MBTI || profileData.MBTI,
+              MBTI_DESCRIPTION: card.MBTI_DESCRIPTION || profileData.MBTI_DESCRIPTION,
               filtered: false // Always set filtered to false when processing cards
             };
             console.log(`Created enriched card:`, enrichedCard);
@@ -1162,7 +1170,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
 
         <Dialog open={showPhotos} onOpenChange={setShowPhotos}>
           <DialogContent 
-            className="max-w-lg bg-white/5 backdrop-blur-xl border border-white/10 [&>button]:hidden overflow-hidden"
+            className="max-w-lg max-h-[90vh] bg-white/5 backdrop-blur-xl border border-white/10 [&>button]:hidden overflow-hidden p-0"
             style={{
               backgroundImage: assets.contentBackground ? `url(${assets.contentBackground})` : undefined,
               backgroundSize: 'cover',
@@ -1191,7 +1199,7 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                 </Button>
               </div>
             </div>
-            <div className="flex flex-col gap-6 pt-4 relative z-10">
+            <div className="flex flex-col gap-6 pt-4 pb-6 px-6 relative z-10 max-h-[calc(90vh-2rem)] overflow-y-auto scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <div className="flex items-start gap-4">
                 <Avatar className="w-20 h-20 ring-2 ring-white/20">
                   {profileImage ? (
@@ -1208,6 +1216,12 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                     <p className="text-white/80 flex items-center gap-2 mb-2 text-sm">
                       <Star className="w-4 h-4 text-yellow-400" />
                       Compatibility: {user.score}/10
+                    </p>
+                  )}
+                  {user.MBTI && (
+                    <p className="text-white/80 flex items-center gap-2 mb-2 text-sm">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      Personality Type: <span className="font-semibold text-purple-300">{user.MBTI}</span>
                     </p>
                   )}
                   {user.city && user.country && (
@@ -1255,8 +1269,8 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                 </Carousel>
               )}
 
-              {/* Show questions only for recommendations and awaiting, not for matches */}
-              {(queue === "recommendations" || queue === "awaiting") && (user.Question1 || user.Question2 || user.Question3) && (
+              {/* Show questions for all queues */}
+              {(user.Question1 || user.Question2 || user.Question3 || (user.MBTI_DESCRIPTION && user.MBTI)) && (
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-white mb-3">Personal Insights</h3>
                   
@@ -1278,6 +1292,21 @@ const Dashboard = ({ userUID, setIsLoggedIn, onLogout, notifications = [] }: Das
                     <div className="bg-white/5 backdrop-blur-sm rounded-lg p-4 border border-white/10">
                       <h4 className="text-sm font-medium text-white/90 mb-2">{user.Question3.Question}</h4>
                       <p className="text-white/70 text-sm leading-relaxed">{user.Question3.Answer}</p>
+                    </div>
+                  )}
+                  
+                  {/* MBTI Personality Description */}
+                  {user.MBTI_DESCRIPTION && user.MBTI && (
+                    <div className="bg-gradient-to-r from-purple-500/20 to-indigo-500/20 backdrop-blur-sm rounded-lg p-4 border border-purple-400/30 mt-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Sparkles className="w-4 h-4 text-purple-300" />
+                        <h4 className="text-sm font-medium text-purple-200">Personality Type</h4>
+                      </div>
+                      <p className="text-white/80 text-sm leading-relaxed">
+                        <span className="font-semibold text-purple-300">{user.MBTI}</span>
+                        <span className="text-white/60"> : </span>
+                        <span className="italic">{user.MBTI_DESCRIPTION}</span>
+                      </p>
                     </div>
                   )}
                 </div>

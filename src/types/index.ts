@@ -52,6 +52,8 @@ export interface ProfileData {
   kundliScore?: number;
   user_align?: boolean;
   FILTERS?: string[]; // Added FILTERS field
+  MBTI?: string; // Personality type code
+  MBTI_DESCRIPTION?: string; // Personality description
   Question1?: { Question: string; Answer: string };
   Question2?: { Question: string; Answer: string };
   Question3?: { Question: string; Answer: string };
